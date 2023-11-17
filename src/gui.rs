@@ -1,14 +1,18 @@
 use rltk::prelude::*;
 use specs::prelude::*;
 
-use crate::{components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion}, map::Map, player::Player};
+use crate::{
+    components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion},
+    map::Map,
+    player::Player,
+};
 
 pub struct GameLog {
     pub entries: Vec<String>,
 }
 
 impl GameLog {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { entries: vec![] }
     }
     pub fn log(&mut self, log_message: String) {
@@ -135,7 +139,7 @@ fn draw_tooltips(ecs: &World, ctx: &mut Rltk) {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ItemMenuResult {
     Cancel,
     NoResponse,
@@ -215,30 +219,26 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
         ctx.print(21, y, item_name.to_owned());
         y += 1;
     }
-
-    match ctx.key {
-        None => ItemMenuResult::NoResponse,
-        Some(key) => match key {
-            VirtualKeyCode::Escape => ItemMenuResult::Cancel,
-            letter => {
-                let selection = rltk::letter_to_option(letter);
-                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-                if selection < 0 || selection >= inventory.len() as i32 {
-                    ItemMenuResult::NoResponse
-                } else {
-                    #[allow(clippy::cast_sign_loss)]
-                    let potion_entity = inventory[selection as usize].1;
-                    let want_drink = WantsToDrinkPotion {
-                        potion: potion_entity,
-                    };
-                    ecs.write_storage::<WantsToDrinkPotion>()
-                        .insert(player_entity, want_drink)
-                        .expect("Failed to WantsToDrinkPotion");
-                    ecs.fetch_mut::<GameLog>()
-                        .log("Tyring to dringk potion".to_string());
-                    ItemMenuResult::Selected(potion_entity)
-                }
+    ctx.key.map_or(ItemMenuResult::NoResponse, |key| match key {
+        VirtualKeyCode::Escape => ItemMenuResult::Cancel,
+        letter => {
+            let selection = rltk::letter_to_option(letter);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            if selection < 0 || selection >= inventory.len() as i32 {
+                ItemMenuResult::NoResponse
+            } else {
+                #[allow(clippy::cast_sign_loss)]
+                let potion_entity = inventory[selection as usize].1;
+                let want_drink = WantsToDrinkPotion {
+                    potion: potion_entity,
+                };
+                ecs.write_storage::<WantsToDrinkPotion>()
+                    .insert(player_entity, want_drink)
+                    .expect("Failed to WantsToDrinkPotion");
+                ecs.fetch_mut::<GameLog>()
+                    .log("Tyring to dringk potion".to_string());
+                ItemMenuResult::Selected(potion_entity)
             }
-        },
-    }
+        }
+    })
 }

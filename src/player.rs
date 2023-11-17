@@ -1,7 +1,6 @@
 use rltk::prelude::*;
 use specs::prelude::*;
 use specs_derive::Component;
-use std::cmp;
 
 use crate::{
     components::{CombatStats, Item, Name, Position, Viewshed, WantsToMelee, WantsToPickUp},
@@ -13,7 +12,7 @@ use crate::{
 #[derive(Debug, Component)]
 pub struct Player;
 
-fn move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
+fn move_player(delta_x: i32, delta_y: i32, ecs: &World) {
     let mut positions = ecs.write_storage::<Position>();
     let players = ecs.read_storage::<Player>();
     let entities = ecs.entities();
@@ -25,8 +24,8 @@ fn move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
     for (_player, pos, viewshed, player_entity) in
         (&players, &mut positions, &mut viewsheds, &entities).join()
     {
-        let new_x = cmp::min(79, cmp::max(0, pos.x + delta_x));
-        let new_y = cmp::min(49, cmp::max(0, pos.y + delta_y));
+        let new_x = (pos.x + delta_x).clamp(0, 79);
+        let new_y = (pos.y + delta_y).clamp(0, 49);
         let destination_idx = map.xy_idx(new_x, new_y);
 
         if !map.blocked[destination_idx] {
@@ -35,8 +34,9 @@ fn move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
 
             viewshed.dirty = true;
         } else if let Some(potential_target) = map.tile_content[destination_idx] {
-            match combat_stats.get(potential_target) {
-                Some(_t) => {
+            combat_stats.get(potential_target).map_or_else(
+                || console::log("cant attack"),
+                |_t| {
                     wants_to_melee
                         .insert(
                             player_entity,
@@ -45,14 +45,13 @@ fn move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
                             },
                         )
                         .expect("Failed to insert WantsToMelee");
-                }
-                None => console::log("cant attack"),
-            }
+                },
+            );
         }
     }
 }
 
-fn get_item(ecs: &mut World) {
+fn get_item(ecs: &World) {
     let players = ecs.read_storage::<Player>();
     let positions = ecs.read_storage::<Position>();
     let entities = ecs.entities();
@@ -87,17 +86,17 @@ fn get_item(ecs: &mut World) {
     }
 }
 
-pub fn input(gs: &mut State, ctx: &mut Rltk) -> RunState {
+pub fn input(gs: &State, ctx: &Rltk) -> RunState {
     let Some(pressed_key) = ctx.key else {
         return RunState::AwaitingInput;
     };
 
     match pressed_key {
-        rltk::VirtualKeyCode::Left => move_player(-1, 0, &mut gs.ecs),
-        rltk::VirtualKeyCode::Right => move_player(1, 0, &mut gs.ecs),
-        rltk::VirtualKeyCode::Up => move_player(0, -1, &mut gs.ecs),
-        rltk::VirtualKeyCode::Down => move_player(0, 1, &mut gs.ecs),
-        rltk::VirtualKeyCode::G => get_item(&mut gs.ecs),
+        rltk::VirtualKeyCode::Left => move_player(-1, 0, &gs.ecs),
+        rltk::VirtualKeyCode::Right => move_player(1, 0, &gs.ecs),
+        rltk::VirtualKeyCode::Up => move_player(0, -1, &gs.ecs),
+        rltk::VirtualKeyCode::Down => move_player(0, 1, &gs.ecs),
+        rltk::VirtualKeyCode::G => get_item(&gs.ecs),
         rltk::VirtualKeyCode::I => return RunState::ShowInventory,
         _ => return RunState::AwaitingInput,
     };

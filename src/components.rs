@@ -2,7 +2,7 @@ use rltk::prelude::*;
 use specs::prelude::*;
 use specs_derive::Component;
 
-#[derive(Debug, Component, PartialEq)]
+#[derive(Debug, Component, PartialEq, Eq)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
@@ -10,7 +10,10 @@ pub struct Position {
 
 impl From<&Position> for Point {
     fn from(point: &Position) -> Self {
-        Point::new(point.x, point.y)
+        Self {
+            x: point.x,
+            y: point.y,
+        }
     }
 }
 
@@ -61,7 +64,7 @@ pub struct SufferDamage {
 }
 
 impl SufferDamage {
-    pub fn new_damage(store: &mut WriteStorage<SufferDamage>, victim: Entity, ammount: i32) {
+    pub fn new_damage(store: &mut WriteStorage<Self>, victim: Entity, ammount: i32) {
         match store.get_mut(victim) {
             Some(suffering) => {
                 suffering.ammount.push(ammount);
@@ -70,7 +73,7 @@ impl SufferDamage {
                 store
                     .insert(
                         victim,
-                        SufferDamage {
+                        Self {
                             ammount: vec![ammount],
                         },
                     )

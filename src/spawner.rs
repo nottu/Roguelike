@@ -64,8 +64,8 @@ enum EnemyType {
 impl EnemyType {
     fn renderable(&self) -> Renderable {
         let glyph = match self {
-            EnemyType::Orc => rltk::to_cp437('o'),
-            EnemyType::Goblin => rltk::to_cp437('g'),
+            Self::Orc => rltk::to_cp437('o'),
+            Self::Goblin => rltk::to_cp437('g'),
         };
         Renderable {
             glyph,
@@ -75,19 +75,20 @@ impl EnemyType {
     }
     fn name(&self) -> String {
         match self {
-            EnemyType::Orc => "Orc",
-            EnemyType::Goblin => "Goblin",
+            Self::Orc => "Orc",
+            Self::Goblin => "Goblin",
         }
         .to_string()
     }
 }
 
-impl From<i32> for EnemyType {
-    fn from(value: i32) -> Self {
+impl TryFrom<i32> for EnemyType {
+    type Error = String;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            1 => EnemyType::Orc,
-            2 => EnemyType::Goblin,
-            n => panic!("Unknown Enemy Type {n}"),
+            1 => Ok(Self::Orc),
+            2 => Ok(Self::Goblin),
+            n => Err(format!("Unknown Enemy Type {n}")),
         }
     }
 }
@@ -115,10 +116,10 @@ fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: &EnemyType) -> E
         .build()
 }
 
-pub fn spawn_random_monster(ecs: &mut World, position: Position) -> Entity {
+pub fn spawn_random_monster(ecs: &mut World, position: Position) -> Result<Entity, String> {
     let roll: i32 = ecs.fetch_mut::<RandomNumberGenerator>().roll_dice(1, 2);
-    let enemy_type = EnemyType::from(roll);
-    spawn_enemy(ecs, position, &enemy_type)
+    let enemy_type = EnemyType::try_from(roll)?;
+    Ok(spawn_enemy(ecs, position, &enemy_type))
 }
 
 const MAX_MONSTERS: i32 = 4;

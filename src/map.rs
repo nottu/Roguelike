@@ -6,7 +6,7 @@ pub const MAP_WIDTH: usize = 80;
 pub const MAP_HEIGHT: usize = 43;
 pub const MAP_SIZE: usize = MAP_WIDTH * MAP_HEIGHT;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileType {
     Wall,
     Floor,
@@ -15,8 +15,8 @@ pub enum TileType {
 impl TileType {
     fn fg(self) -> RGB {
         match self {
-            TileType::Floor => RGB::from_f32(0.0, 0.5, 0.5),
-            TileType::Wall => RGB::from_f32(0.0, 1.0, 0.0),
+            Self::Floor => RGB::from_f32(0.0, 0.5, 0.5),
+            Self::Wall => RGB::from_f32(0.0, 1.0, 0.0),
         }
     }
     #[allow(clippy::unused_self)]
@@ -25,8 +25,8 @@ impl TileType {
     }
     fn font_char(self) -> FontCharType {
         match self {
-            TileType::Floor => rltk::to_cp437('.'),
-            TileType::Wall => rltk::to_cp437('#'),
+            Self::Floor => rltk::to_cp437('.'),
+            Self::Wall => rltk::to_cp437('#'),
         }
     }
 }
@@ -40,7 +40,7 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+    pub const fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         Self {
             x1: x,
             x2: x + w,
@@ -49,19 +49,19 @@ impl Rect {
         }
     }
 
-    pub fn intersect(&self, other: &Self) -> bool {
+    pub const fn intersect(&self, other: &Self) -> bool {
         self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
     }
 
-    pub fn center(&self) -> (i32, i32) {
+    pub const fn center(&self) -> (i32, i32) {
         ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
     }
 
-    pub fn width(&self) -> i32 {
+    pub const fn width(&self) -> i32 {
         self.x2 - self.x1
     }
 
-    pub fn height(self) -> i32 {
+    pub const fn height(self) -> i32 {
         self.y2 - self.y1
     }
 }
@@ -99,7 +99,7 @@ impl Map {
         }
     }
     #[allow(clippy::cast_sign_loss)]
-    pub fn xy_idx(&self, x: i32, y: i32) -> usize {
+    pub const fn xy_idx(&self, x: i32, y: i32) -> usize {
         (y * self.width + x) as usize
     }
 

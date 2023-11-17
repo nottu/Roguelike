@@ -1,4 +1,4 @@
-#![warn(clippy::all, clippy::pedantic)]
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 
 use gui::GameLog;
 use player::Player;
@@ -14,7 +14,10 @@ mod spawner;
 mod state;
 mod systems;
 
-use components::{BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable, SufferDamage, Viewshed, WantsToDrinkPotion, WantsToMelee, WantsToPickUp};
+use components::{
+    BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable,
+    SufferDamage, Viewshed, WantsToDrinkPotion, WantsToMelee, WantsToPickUp,
+};
 use map::Map;
 use spawner::{spawn_player, spawn_room};
 use state::{RunState, State};

@@ -154,7 +154,7 @@ impl GameState for State {
 }
 
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RunState {
     AwaitingInput,
     PreRun,
