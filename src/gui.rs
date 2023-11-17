@@ -2,7 +2,7 @@ use rltk::prelude::*;
 use specs::prelude::*;
 
 use crate::{
-    components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion},
+    components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion, WantsToDropItem},
     map::Map,
     player::Player,
 };
@@ -148,8 +148,6 @@ pub enum ItemMenuResult {
 
 pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
     let players = ecs.read_storage::<Player>();
-    let names = ecs.read_storage::<Name>();
-    let backpack = ecs.read_storage::<InBackpack>();
     let entities = ecs.entities();
 
     let Some(player_entity) = (&entities, &players)
@@ -159,6 +157,52 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
     else {
         return ItemMenuResult::Cancel;
     };
+    match show_inventory_menu(ecs, ctx, player_entity, "Inventory") {
+        ItemMenuResult::Selected(item) => {
+            ecs.write_storage::<WantsToDrinkPotion>()
+                .insert(player_entity, WantsToDrinkPotion { potion: item })
+                .expect("Failed to WantsToDrinkPotion");
+            ecs.fetch_mut::<GameLog>()
+                .log("Tyring to drink potion".to_string());
+            ItemMenuResult::Selected(item)
+        }
+        menu_result => menu_result,
+    }
+}
+
+pub fn drop_item_menu(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
+    let players = ecs.read_storage::<Player>();
+    let entities = ecs.entities();
+
+    let Some(player_entity) = (&entities, &players)
+        .join()
+        .map(|(entity, _p)| entity)
+        .next()
+    else {
+        return ItemMenuResult::Cancel;
+    };
+    match show_inventory_menu(ecs, ctx, player_entity, "Drop Which Item?") {
+        ItemMenuResult::Selected(item) => {
+            ecs.write_storage::<WantsToDropItem>()
+                .insert(player_entity, WantsToDropItem { item })
+                .expect("Failed to WantsToDropItem");
+            ecs.fetch_mut::<GameLog>()
+                .log("Tyring to drop item".to_string());
+            ItemMenuResult::Selected(item)
+        }
+        menu_result => menu_result,
+    }
+}
+
+fn show_inventory_menu(
+    ecs: &World,
+    ctx: &mut Rltk,
+    player_entity: Entity,
+    menu_text: &str,
+) -> ItemMenuResult {
+    let names = ecs.read_storage::<Name>();
+    let backpack = ecs.read_storage::<InBackpack>();
+    let entities = ecs.entities();
 
     let inventory: Vec<(&str, Entity)> = (&backpack, &names, &entities)
         .join()
@@ -167,7 +211,7 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
         .collect();
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let mut y = 25 - (inventory.len() / 2) as i32;
+    let y = 25 - (inventory.len() / 2) as i32;
     ctx.draw_box(
         15,
         y - 2,
@@ -176,13 +220,7 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
         RGB::named(WHITE),
         RGB::named(BLACK),
     );
-    ctx.print_color(
-        18,
-        y - 2,
-        RGB::named(YELLOW),
-        RGB::named(BLACK),
-        "Inventory",
-    );
+    ctx.print_color(18, y - 2, RGB::named(YELLOW), RGB::named(BLACK), menu_text);
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     ctx.print_color(
         18,
@@ -193,31 +231,32 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
     );
 
     for (idx, (item_name, _item_ent)) in inventory.iter().enumerate() {
+        #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+        let idx = idx as i32;
         ctx.set(
             17,
-            y,
+            y + idx,
             RGB::named(WHITE),
             RGB::named(BLACK),
             rltk::to_cp437('('),
         );
-        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
         ctx.set(
             18,
-            y,
+            y + idx,
             RGB::named(WHITE),
             RGB::named(BLACK),
             97 + idx as FontCharType,
         );
         ctx.set(
             19,
-            y,
+            y + idx,
             RGB::named(WHITE),
             RGB::named(BLACK),
             rltk::to_cp437(')'),
         );
 
-        ctx.print(21, y, item_name.to_owned());
-        y += 1;
+        ctx.print(21, y + idx, item_name.to_owned());
     }
     ctx.key.map_or(ItemMenuResult::NoResponse, |key| match key {
         VirtualKeyCode::Escape => ItemMenuResult::Cancel,
@@ -228,16 +267,8 @@ pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
                 ItemMenuResult::NoResponse
             } else {
                 #[allow(clippy::cast_sign_loss)]
-                let potion_entity = inventory[selection as usize].1;
-                let want_drink = WantsToDrinkPotion {
-                    potion: potion_entity,
-                };
-                ecs.write_storage::<WantsToDrinkPotion>()
-                    .insert(player_entity, want_drink)
-                    .expect("Failed to WantsToDrinkPotion");
-                ecs.fetch_mut::<GameLog>()
-                    .log("Tyring to dringk potion".to_string());
-                ItemMenuResult::Selected(potion_entity)
+                let item_entity = inventory[selection as usize].1;
+                ItemMenuResult::Selected(item_entity)
             }
         }
     })

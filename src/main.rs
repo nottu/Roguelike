@@ -16,16 +16,16 @@ mod systems;
 
 use components::{
     BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable,
-    SufferDamage, Viewshed, WantsToDrinkPotion, WantsToMelee, WantsToPickUp,
+    SufferDamage, Viewshed, WantsToDrinkPotion, WantsToDropItem, WantsToMelee, WantsToPickUp,
 };
 use map::Map;
 use spawner::{spawn_player, spawn_room};
 use state::{RunState, State};
 
-fn main() -> rltk::BError {
+fn main() -> BError {
     let context = {
         let mut ctx = RltkBuilder::simple80x50()
-            .with_title("Rougelike Tutorial")
+            .with_title("Roguelike Tutorial")
             .build()?;
         ctx.with_post_scanlines(true);
         ctx
@@ -34,7 +34,7 @@ fn main() -> rltk::BError {
     let mut gs = State::new();
     register_components(&mut gs.ecs);
 
-    let mut rng = rltk::RandomNumberGenerator::new();
+    let mut rng = RandomNumberGenerator::new();
     let map = Map::new_map_rooms_and_corridors(&mut rng);
     gs.ecs.insert(rng);
 
@@ -58,7 +58,7 @@ fn main() -> rltk::BError {
     gs.ecs.insert(game_log);
     //
 
-    rltk::main_loop(context, gs)
+    main_loop(context, gs)
 }
 
 fn register_components(ecs: &mut World) {
@@ -78,4 +78,5 @@ fn register_components(ecs: &mut World) {
     ecs.register::<InBackpack>();
     ecs.register::<WantsToPickUp>();
     ecs.register::<WantsToDrinkPotion>();
+    ecs.register::<WantsToDropItem>();
 }

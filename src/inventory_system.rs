@@ -3,7 +3,8 @@ use specs::prelude::*;
 
 use crate::{
     components::{
-        CombatStats, InBackpack, Name, Position, Potion, WantsToDrinkPotion, WantsToPickUp,
+        CombatStats, InBackpack, Name, Position, Potion, WantsToDrinkPotion, WantsToDropItem,
+        WantsToPickUp,
     },
     gui::GameLog,
     player::Player,
@@ -101,5 +102,48 @@ impl<'a> System<'a> for PotionSystem {
             }
         }
         wants_drink.clear();
+    }
+}
+
+pub struct ItemDropSystem;
+
+impl<'a> System<'a> for ItemDropSystem {
+    type SystemData = (
+        Entities<'a>,
+        WriteExpect<'a, GameLog>,
+        WriteStorage<'a, WantsToDropItem>,
+        ReadStorage<'a, Name>,
+        WriteStorage<'a, Position>,
+        WriteStorage<'a, InBackpack>,
+        ReadStorage<'a, Player>,
+    );
+    fn run(&mut self, data: Self::SystemData) {
+        let (entities, mut game_log, mut wants_drop, names, mut positions, mut backpack, players) =
+            data;
+
+        let player_entity = (&entities, &players)
+            .join()
+            .map(|(entity, _)| entity)
+            .next()
+            .unwrap();
+        for (entity, to_drop) in (&entities, &wants_drop).join() {
+            let Some(dropper_pos) = positions.get(entity).map(std::borrow::ToOwned::to_owned)
+            else {
+                console::log("Cannot get dropper position");
+                return;
+            };
+            positions
+                .insert(to_drop.item, dropper_pos)
+                .expect("Failed to drop at position");
+            backpack.remove(to_drop.item);
+
+            if entity == player_entity {
+                let item_name = names
+                    .get(to_drop.item)
+                    .map_or("Unnamed Item", |name| name.name.as_str());
+                game_log.log(format!("You droped the {item_name}"));
+            }
+        }
+        wants_drop.clear();
     }
 }

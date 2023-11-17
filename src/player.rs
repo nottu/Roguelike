@@ -98,6 +98,7 @@ pub fn input(gs: &State, ctx: &Rltk) -> RunState {
         rltk::VirtualKeyCode::Down => move_player(0, 1, &gs.ecs),
         rltk::VirtualKeyCode::G => get_item(&gs.ecs),
         rltk::VirtualKeyCode::I => return RunState::ShowInventory,
+        rltk::VirtualKeyCode::D => return RunState::ShowDropItem,
         _ => return RunState::AwaitingInput,
     };
     RunState::PlayerTurn

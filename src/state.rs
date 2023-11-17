@@ -1,7 +1,7 @@
 use crate::{
     components::{CombatStats, Name, Position, Renderable},
-    gui::{draw_ui, show_inventory, GameLog, ItemMenuResult},
-    inventory_system::{ItemCollectionSystem, PotionSystem},
+    gui::{draw_ui, drop_item_menu, show_inventory, GameLog, ItemMenuResult},
+    inventory_system::{ItemCollectionSystem, ItemDropSystem, PotionSystem},
     map::Map,
     player::{self, Player},
     systems::{DamageSystem, MeleeCombatSystem, MonsterAI, VisibilitySystem},
@@ -44,6 +44,11 @@ impl State {
         {
             let mut potion_system = PotionSystem;
             potion_system.run_now(&self.ecs);
+        }
+        // item droping
+        {
+            let mut item_drop_system = ItemDropSystem;
+            item_drop_system.run_now(&self.ecs);
         }
         self.ecs.maintain();
     }
@@ -111,7 +116,9 @@ impl GameState for State {
             ctx.print(1, 1, &format!("{}", ctx.fps));
             let positions = self.ecs.read_storage::<Position>();
             let renderables = self.ecs.read_storage::<Renderable>();
-            for (pos, render) in (&positions, &renderables).join() {
+            let mut render_data: Vec<_> = (&positions, &renderables).join().collect();
+            render_data.sort_by_key(|(_p, renderable)| -renderable.render_order);
+            for (pos, render) in render_data {
                 let idx = map.xy_idx(pos.x, pos.y);
                 if map.visible_tiles[idx] {
                     ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
@@ -134,17 +141,12 @@ impl GameState for State {
                 RunState::ShowInventory => match show_inventory(&self.ecs, ctx) {
                     ItemMenuResult::NoResponse => RunState::ShowInventory,
                     ItemMenuResult::Cancel => RunState::AwaitingInput,
-                    ItemMenuResult::Selected(_selected_entity) => {
-                        // let names = self.ecs.read_storage::<Name>();
-                        // let item_name = names
-                        //     .get(selected_entity)
-                        //     .map(|name| name.name.as_str())
-                        //     .unwrap_or("Unnamed item");
-                        // self.ecs
-                        //     .fetch_mut::<GameLog>()
-                        //     .log(format!("Trying to use {item_name}"));
-                        RunState::PlayerTurn
-                    }
+                    ItemMenuResult::Selected(_selected_entity) => RunState::PlayerTurn,
+                },
+                RunState::ShowDropItem => match drop_item_menu(&self.ecs, ctx) {
+                    ItemMenuResult::NoResponse => RunState::ShowDropItem,
+                    ItemMenuResult::Cancel => RunState::AwaitingInput,
+                    ItemMenuResult::Selected(_selected_item) => RunState::PlayerTurn,
                 },
             };
             *self.ecs.write_resource::<RunState>() = new_runstate;
@@ -161,4 +163,5 @@ pub enum RunState {
     PlayerTurn,
     MonsterTurn,
     ShowInventory,
+    ShowDropItem,
 }

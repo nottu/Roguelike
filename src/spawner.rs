@@ -18,6 +18,7 @@ pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
             glyph: rltk::to_cp437('@'),
             fg: RGB::named(rltk::YELLOW),
             bg: RGB::named(rltk::BLACK),
+            render_order: 0,
         })
         .with(Player)
         .with(Viewshed {
@@ -44,6 +45,7 @@ pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
             glyph: rltk::to_cp437('¡'),
             fg: RGB::named(MAGENTA),
             bg: RGB::named(BLACK),
+            render_order: 2,
         })
         .with(Item)
         .with(Potion { heal_amount: 8 })
@@ -71,6 +73,7 @@ impl EnemyType {
             glyph,
             fg: RGB::named(rltk::RED),
             bg: RGB::named(rltk::BLACK),
+            render_order: 1,
         }
     }
     fn name(&self) -> String {
@@ -184,6 +187,7 @@ fn spawn_potion(ecs: &mut World, position: Position) -> Entity {
             glyph: rltk::to_cp437('¡'),
             fg: RGB::named(MAGENTA),
             bg: RGB::named(BLACK),
+            render_order: 2,
         })
         .with(Item)
         .with(Potion { heal_amount: 8 })

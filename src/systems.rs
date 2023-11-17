@@ -202,7 +202,7 @@ impl<'a> System<'a> for DamageSystem {
     fn run(&mut self, data: Self::SystemData) {
         let (mut stats, mut suffered_damage) = data;
         for (stats, suffered_damage) in (&mut stats, &mut suffered_damage).join() {
-            stats.hp -= suffered_damage.ammount.iter().sum::<i32>();
+            stats.hp -= suffered_damage.amount.iter().sum::<i32>();
         }
         suffered_damage.clear();
     }

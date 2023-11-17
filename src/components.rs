@@ -2,7 +2,7 @@ use rltk::prelude::*;
 use specs::prelude::*;
 use specs_derive::Component;
 
-#[derive(Debug, Component, PartialEq, Eq)]
+#[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
@@ -19,9 +19,10 @@ impl From<&Position> for Point {
 
 #[derive(Debug, Component)]
 pub struct Renderable {
-    pub glyph: rltk::FontCharType,
+    pub glyph: FontCharType,
     pub fg: RGB,
     pub bg: RGB,
+    pub render_order: i32,
 }
 
 #[derive(Debug, Component)]
@@ -29,7 +30,7 @@ pub struct LeftMover;
 
 #[derive(Debug, Component)]
 pub struct Viewshed {
-    pub visible_tiles: Vec<rltk::Point>,
+    pub visible_tiles: Vec<Point>,
     pub range: i32,
     pub dirty: bool,
 }
@@ -60,21 +61,21 @@ pub struct WantsToMelee {
 
 #[derive(Debug, Component)]
 pub struct SufferDamage {
-    pub ammount: Vec<i32>,
+    pub amount: Vec<i32>,
 }
 
 impl SufferDamage {
-    pub fn new_damage(store: &mut WriteStorage<Self>, victim: Entity, ammount: i32) {
+    pub fn new_damage(store: &mut WriteStorage<Self>, victim: Entity, amount: i32) {
         match store.get_mut(victim) {
             Some(suffering) => {
-                suffering.ammount.push(ammount);
+                suffering.amount.push(amount);
             }
             None => {
                 store
                     .insert(
                         victim,
                         Self {
-                            ammount: vec![ammount],
+                            amount: vec![amount],
                         },
                     )
                     .expect("Unable to insert damage");
@@ -104,4 +105,9 @@ pub struct WantsToPickUp {
 #[derive(Debug, Component)]
 pub struct WantsToDrinkPotion {
     pub potion: Entity,
+}
+
+#[derive(Debug, Component)]
+pub struct WantsToDropItem {
+    pub item: Entity,
 }
