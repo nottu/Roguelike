@@ -14,9 +14,9 @@ mod spawner;
 mod state;
 mod systems;
 
-use components::*;
-use map::*;
-use spawner::*;
+use components::{BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable, SufferDamage, Viewshed, WantsToDrinkPotion, WantsToMelee, WantsToPickUp};
+use map::Map;
+use spawner::{spawn_player, spawn_room};
 use state::{RunState, State};
 
 fn main() -> rltk::BError {
@@ -35,7 +35,7 @@ fn main() -> rltk::BError {
     let map = Map::new_map_rooms_and_corridors(&mut rng);
     gs.ecs.insert(rng);
 
-    let Some((x, y)) = map.rooms.first().map(|room| room.center()) else {
+    let Some((x, y)) = map.rooms.first().map(map::Rect::center) else {
         return Err("NO FIRST ROOM".into());
     };
     // Create and keep track of player entity

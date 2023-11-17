@@ -1,7 +1,7 @@
 use rltk::prelude::*;
 use specs::prelude::*;
 
-use crate::{components::*, map::Map, player::Player};
+use crate::{components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion}, map::Map, player::Player};
 
 pub struct GameLog {
     pub entries: Vec<String>,

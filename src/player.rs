@@ -4,7 +4,7 @@ use specs_derive::Component;
 use std::cmp;
 
 use crate::{
-    components::*,
+    components::{CombatStats, Item, Name, Position, Viewshed, WantsToMelee, WantsToPickUp},
     gui::GameLog,
     map::Map,
     state::{RunState, State},
@@ -82,12 +82,12 @@ fn get_item(ecs: &mut World) {
             pickup
                 .insert(player_entity, WantsToPickUp { item: item_entity })
                 .expect("Failed to write to WantsToPickUp");
-            game_log.log(format!("WantsToPickUp {item_name}"))
+            game_log.log(format!("WantsToPickUp {item_name}"));
         }
     }
 }
 
-pub fn player_input(gs: &mut State, ctx: &mut Rltk) -> RunState {
+pub fn input(gs: &mut State, ctx: &mut Rltk) -> RunState {
     let Some(pressed_key) = ctx.key else {
         return RunState::AwaitingInput;
     };

@@ -1,7 +1,13 @@
 use rltk::prelude::*;
 use specs::prelude::*;
 
-use crate::{components::*, gui::GameLog, map::Map, player::Player, state::RunState};
+use crate::{
+    components::{CombatStats, Monster, Name, Position, SufferDamage, Viewshed, WantsToMelee},
+    gui::GameLog,
+    map::Map,
+    player::Player,
+    state::RunState,
+};
 
 //
 pub struct VisibilitySystem;
@@ -28,8 +34,8 @@ impl<'a> System<'a> for VisibilitySystem {
 
             // if entity is a player, mark tile as revealed
             if let Some(_p) = players.get(entity) {
-                for t in map.visible_tiles.iter_mut() {
-                    *t = false
+                for t in &mut map.visible_tiles {
+                    *t = false;
                 }
                 for vis in &viewshed.visible_tiles {
                     let idx = map.xy_idx(vis.x, vis.y);
@@ -117,8 +123,10 @@ impl<'a> System<'a> for MonsterAI {
                 let idx = map.xy_idx(monster_pos.x, monster_pos.y);
                 map.blocked[idx] = false;
                 map.tile_content[idx] = None;
-                monster_pos.x = path.steps[1] as i32 % map.width;
-                monster_pos.y = path.steps[1] as i32 / map.width;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                let path_steps = path.steps[1] as i32;
+                monster_pos.x = path_steps % map.width;
+                monster_pos.y = path_steps / map.width;
                 let idx = map.xy_idx(monster_pos.x, monster_pos.y);
                 map.blocked[idx] = true;
                 map.tile_content[idx] = Some(monster_entity);
@@ -160,8 +168,7 @@ impl<'a> System<'a> for MeleeCombatSystem {
             }
             let target_name = names
                 .get(melee.target)
-                .map(|named| named.name.as_str())
-                .unwrap_or("UNNAMED");
+                .map_or("UNNAMED", |named| named.name.as_str());
 
             let damage = stats.power - target_stats.defense;
 

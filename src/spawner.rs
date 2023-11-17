@@ -1,7 +1,14 @@
 use rltk::prelude::*;
 use specs::prelude::*;
 
-use crate::{components::*, map::Rect, player::Player};
+use crate::{
+    components::{
+        BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable,
+        Viewshed,
+    },
+    map::Rect,
+    player::Player,
+};
 
 pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
     let player_entity = ecs
@@ -85,7 +92,7 @@ impl From<i32> for EnemyType {
     }
 }
 
-fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: EnemyType) -> Entity {
+fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: &EnemyType) -> Entity {
     ecs.create_entity()
         .with(position)
         .with(enemy_type.renderable())
@@ -111,20 +118,20 @@ fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: EnemyType) -> En
 pub fn spawn_random_monster(ecs: &mut World, position: Position) -> Entity {
     let roll: i32 = ecs.fetch_mut::<RandomNumberGenerator>().roll_dice(1, 2);
     let enemy_type = EnemyType::from(roll);
-    spawn_enemy(ecs, position, enemy_type)
+    spawn_enemy(ecs, position, &enemy_type)
 }
 
 const MAX_MONSTERS: i32 = 4;
 const MAX_ITEMS: i32 = 2;
 
-/// Spawns from 0 up to MAX_MONSTERS per room
-/// Also spawns from 0 up to MAX_ITEMS
+/// Spawns from 0 up to `MAX_MONSTERS` per room
+/// Also spawns from 0 up to `MAX_ITEMS`
 pub fn spawn_room(ecs: &mut World, room: &Rect) {
     // generate num_moster number of Positions
     {
         let monster_points: Vec<(i32, i32)> = {
             let mut rng = ecs.fetch_mut::<RandomNumberGenerator>();
-            let num_monsters = rng.roll_dice(1, MAX_MONSTERS) as usize - 1;
+            let num_monsters = rng.roll_dice(1, MAX_MONSTERS) - 1;
             generate_random_room_positions(room, num_monsters, &mut rng)
         };
 
@@ -136,7 +143,7 @@ pub fn spawn_room(ecs: &mut World, room: &Rect) {
     {
         let potion_points: Vec<(i32, i32)> = {
             let mut rng = ecs.fetch_mut::<RandomNumberGenerator>();
-            let num_items = rng.roll_dice(1, MAX_ITEMS) as usize - 1;
+            let num_items = rng.roll_dice(1, MAX_ITEMS) - 1;
             generate_random_room_positions(room, num_items, &mut rng)
         };
 
@@ -148,7 +155,7 @@ pub fn spawn_room(ecs: &mut World, room: &Rect) {
 
 fn generate_random_room_positions(
     room: &Rect,
-    num_positions: usize,
+    num_positions: i32,
     rng: &mut RandomNumberGenerator,
 ) -> Vec<(i32, i32)> {
     let mut positions: Vec<(i32, i32)> = Vec::new();

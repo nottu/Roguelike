@@ -1,10 +1,10 @@
 use crate::{
-    components::*,
+    components::{CombatStats, Name, Position, Renderable},
     gui::{draw_ui, show_inventory, GameLog, ItemMenuResult},
     inventory_system::{ItemCollectionSystem, PotionSystem},
     map::Map,
-    player::{player_input, Player},
-    systems::*,
+    player::{self, Player},
+    systems::{DamageSystem, MeleeCombatSystem, MonsterAI, VisibilitySystem},
 };
 use rltk::prelude::*;
 use specs::prelude::*;
@@ -65,15 +65,15 @@ impl State {
                         None
                     }
                 })
-                .filter(|&(entity, _)| match players.get(entity) {
-                    Some(_) => {
+                .filter(|&(entity, _)| {
+                    if let Some(_player) = players.get(entity) {
                         game_log.log("You are dead!".into());
                         false
-                    }
-                    None => {
-                        if let Some(victim_name) = names.get(entity) {
-                            game_log.log(format!("{} is dead", victim_name.name));
-                        }
+                    } else {
+                        let victim_name = names
+                            .get(entity)
+                            .map_or("Unnamed Victim", |victim_name| victim_name.name.as_str());
+                        game_log.log(format!("{victim_name} is dead"));
                         true
                     }
                 })
@@ -122,18 +122,14 @@ impl GameState for State {
         {
             let runstate = *self.ecs.fetch::<RunState>();
             let new_runstate = match runstate {
-                RunState::PreRun => {
+                RunState::MonsterTurn | RunState::PreRun => {
                     self.run_systems();
                     RunState::AwaitingInput
                 }
-                RunState::AwaitingInput => player_input(self, ctx),
+                RunState::AwaitingInput => player::input(self, ctx),
                 RunState::PlayerTurn => {
                     self.run_systems();
                     RunState::MonsterTurn
-                }
-                RunState::MonsterTurn => {
-                    self.run_systems();
-                    RunState::AwaitingInput
                 }
                 RunState::ShowInventory => match show_inventory(&self.ecs, ctx) {
                     ItemMenuResult::NoResponse => RunState::ShowInventory,
@@ -157,6 +153,7 @@ impl GameState for State {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RunState {
     AwaitingInput,
