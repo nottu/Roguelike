@@ -1,47 +1,9 @@
-use std::cmp;
-
 use rltk::prelude::*;
-use specs::{Entities, Join, ReadStorage, System, World, WorldExt, WriteExpect, WriteStorage};
+use specs::prelude::*;
 
-use crate::{
-    components::*,
-    map::{Map, TileType},
-    State,
-};
+use crate::{components::*, gui::GameLog, map::Map, player::Player, state::RunState};
 
-fn move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
-    let mut positions = ecs.write_storage::<Position>();
-    let players = ecs.read_storage::<Player>();
-    let mut viewsheds = ecs.write_storage::<Viewshed>();
-
-    let map = ecs.fetch::<Map>();
-    for (_player, pos, viewshed) in (&players, &mut positions, &mut viewsheds).join() {
-        let new_x = cmp::min(79, cmp::max(0, pos.x + delta_x));
-        let new_y = cmp::min(49, cmp::max(0, pos.y + delta_y));
-        if map.tiles[map.xy_idx(new_x, new_y)] != TileType::Wall {
-            pos.x = new_x;
-            pos.y = new_y;
-
-            viewshed.dirty = true;
-        }
-    }
-}
-
-pub fn player_input(gs: &mut State, ctx: &mut Rltk) {
-    let Some(pressed_key) = ctx.key else {
-        return;
-    };
-
-    let (delta_x, delta_y) = match pressed_key {
-        rltk::VirtualKeyCode::Left => (-1, 0),
-        rltk::VirtualKeyCode::Right => (1, 0),
-        rltk::VirtualKeyCode::Up => (0, -1),
-        rltk::VirtualKeyCode::Down => (0, 1),
-        _ => (0, 0),
-    };
-    move_player(delta_x, delta_y, &mut gs.ecs)
-}
-
+//
 pub struct VisibilitySystem;
 
 impl<'a> System<'a> for VisibilitySystem {
@@ -77,5 +39,164 @@ impl<'a> System<'a> for VisibilitySystem {
             }
             viewshed.dirty = false;
         }
+    }
+}
+//
+
+//
+pub struct MonsterAI;
+
+impl<'a> System<'a> for MonsterAI {
+    type SystemData = (
+        ReadExpect<'a, RunState>,
+        WriteExpect<'a, Map>,
+        WriteStorage<'a, Viewshed>,
+        WriteStorage<'a, Position>,
+        ReadStorage<'a, Monster>,
+        ReadStorage<'a, Player>,
+        ReadStorage<'a, Name>,
+        WriteStorage<'a, WantsToMelee>,
+        Entities<'a>,
+    );
+    fn run(&mut self, data: Self::SystemData) {
+        let (
+            runstate,
+            mut map,
+            mut viewsheds,
+            mut positions,
+            monsters,
+            players,
+            names,
+            mut wants_to_melee,
+            entities,
+        ) = data;
+        if *runstate != RunState::MonsterTurn {
+            return;
+        }
+        let Some((player_entity, player_pos)) = (&entities, &positions, &players)
+            .join()
+            .map(|(ent, pos, _)| (ent, Point::new(pos.x, pos.y)))
+            .next()
+        else {
+            return;
+        };
+
+        for (viewshed, _, name, monster_pos, monster_entity) in
+            (&mut viewsheds, &monsters, &names, &mut positions, &entities).join()
+        {
+            if !viewshed.visible_tiles.contains(&player_pos) {
+                continue;
+            }
+
+            let distance = rltk::DistanceAlg::Pythagoras.distance2d(
+                Point::new(monster_pos.x, monster_pos.y),
+                Point::new(player_pos.x, player_pos.y),
+            );
+
+            if distance < 1.5 {
+                let fail_message = format!("Failed to add wants_to_melee for {}", name.name);
+                wants_to_melee
+                    .insert(
+                        monster_entity,
+                        WantsToMelee {
+                            target: player_entity,
+                        },
+                    )
+                    .expect(&fail_message);
+                return;
+            }
+
+            // path towards player
+            let path = {
+                let monster_idx = map.xy_idx(monster_pos.x, monster_pos.y);
+                let player_idx = map.xy_idx(player_pos.x, player_pos.y);
+
+                rltk::a_star_search(monster_idx, player_idx, &*map)
+            };
+            if path.success && path.steps.len() > 1 {
+                let idx = map.xy_idx(monster_pos.x, monster_pos.y);
+                map.blocked[idx] = false;
+                map.tile_content[idx] = None;
+                monster_pos.x = path.steps[1] as i32 % map.width;
+                monster_pos.y = path.steps[1] as i32 / map.width;
+                let idx = map.xy_idx(monster_pos.x, monster_pos.y);
+                map.blocked[idx] = true;
+                map.tile_content[idx] = Some(monster_entity);
+                viewshed.dirty = true;
+            }
+        }
+    }
+}
+//
+
+//
+pub struct MeleeCombatSystem;
+impl<'a> System<'a> for MeleeCombatSystem {
+    type SystemData = (
+        Entities<'a>,
+        WriteStorage<'a, WantsToMelee>,
+        ReadStorage<'a, Name>,
+        ReadStorage<'a, CombatStats>,
+        WriteStorage<'a, SufferDamage>,
+        WriteExpect<'a, GameLog>,
+    );
+
+    fn run(&mut self, data: Self::SystemData) {
+        let (entities, mut wants_melee, names, combat_stats, mut inflict_damage, mut game_log) =
+            data;
+
+        for (_entity, melee, name, stats) in (&entities, &wants_melee, &names, &combat_stats).join()
+        {
+            let name = name.name.as_str();
+            if stats.hp <= 0 {
+                continue;
+            }
+            let Some(target_stats) = combat_stats.get(melee.target) else {
+                console::log("Could not find melee target with combat stats!");
+                continue;
+            };
+            if target_stats.hp <= 0 {
+                continue;
+            }
+            let target_name = names
+                .get(melee.target)
+                .map(|named| named.name.as_str())
+                .unwrap_or("UNNAMED");
+
+            let damage = stats.power - target_stats.defense;
+
+            match damage {
+                1.. => {
+                    SufferDamage::new_damage(&mut inflict_damage, melee.target, damage);
+                    game_log
+                        .entries
+                        .push(format!("{name} hits {target_name}, for {damage} hp"));
+                }
+                _ => {
+                    game_log
+                        .entries
+                        .push(format!("{name} is unable to hurt {target_name}"));
+                }
+            }
+        }
+
+        wants_melee.clear();
+    }
+}
+
+//
+pub struct DamageSystem;
+impl<'a> System<'a> for DamageSystem {
+    type SystemData = (
+        WriteStorage<'a, CombatStats>,
+        WriteStorage<'a, SufferDamage>,
+    );
+
+    fn run(&mut self, data: Self::SystemData) {
+        let (mut stats, mut suffered_damage) = data;
+        for (stats, suffered_damage) in (&mut stats, &mut suffered_damage).join() {
+            stats.hp -= suffered_damage.ammount.iter().sum::<i32>();
+        }
+        suffered_damage.clear();
     }
 }

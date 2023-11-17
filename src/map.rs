@@ -1,8 +1,9 @@
 use rltk::prelude::*;
+use specs::prelude::*;
 use std::cmp::{max, min};
 
 pub const MAP_WIDTH: usize = 80;
-pub const MAP_HEIGHT: usize = 50;
+pub const MAP_HEIGHT: usize = 43;
 pub const MAP_SIZE: usize = MAP_WIDTH * MAP_HEIGHT;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -12,19 +13,17 @@ pub enum TileType {
 }
 
 impl TileType {
-    fn fg(&self) -> RGB {
+    fn fg(self) -> RGB {
         match self {
-            TileType::Floor => RGB::from_f32(0.5, 0.5, 0.5),
+            TileType::Floor => RGB::from_f32(0.0, 0.5, 0.5),
             TileType::Wall => RGB::from_f32(0.0, 1.0, 0.0),
         }
     }
-    fn bg(&self) -> RGB {
-        match self {
-            TileType::Floor => RGB::from_f32(0.0, 0.0, 0.0),
-            TileType::Wall => RGB::from_f32(0.0, 0.0, 0.0),
-        }
+    #[allow(clippy::unused_self)]
+    fn bg(self) -> RGB {
+        RGB::from_f32(0.0, 0.0, 0.0)
     }
-    fn font_char(&self) -> FontCharType {
+    fn font_char(self) -> FontCharType {
         match self {
             TileType::Floor => rltk::to_cp437('.'),
             TileType::Wall => rltk::to_cp437('#'),
@@ -57,6 +56,14 @@ impl Rect {
     pub fn center(&self) -> (i32, i32) {
         ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
     }
+
+    pub fn width(&self) -> i32 {
+        self.x2 - self.x1
+    }
+
+    pub fn height(self) -> i32 {
+        self.y2 - self.y1
+    }
 }
 
 pub struct Map {
@@ -66,13 +73,39 @@ pub struct Map {
     pub height: i32,
     pub revealed_tiles: Vec<bool>,
     pub visible_tiles: Vec<bool>,
+    pub blocked: Vec<bool>,
+    pub tile_content: Vec<Option<Entity>>,
 }
 
 impl Map {
+    pub fn draw(&self, ctx: &mut Rltk) {
+        let mut y = 0;
+        let mut x = 0;
+        for (idx, tile) in self.tiles.iter().enumerate() {
+            if self.revealed_tiles[idx] {
+                let fg = if self.visible_tiles[idx] {
+                    tile.fg()
+                } else {
+                    tile.fg().to_greyscale()
+                };
+                ctx.set(x, y, fg, tile.bg(), tile.font_char());
+            }
+            // Move the coordinates
+            x += 1;
+            if x > 79 {
+                x = 0;
+                y += 1;
+            }
+        }
+    }
+    #[allow(clippy::cast_sign_loss)]
     pub fn xy_idx(&self, x: i32, y: i32) -> usize {
         (y * self.width + x) as usize
     }
-    pub fn new_map_rooms_and_corridors() -> Self {
+
+    pub fn new_map_rooms_and_corridors(rng: &mut RandomNumberGenerator) -> Self {
+        const MAX_ROOMS: i32 = 30;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let mut map = Self {
             tiles: vec![TileType::Wall; MAP_SIZE],
             rooms: vec![],
@@ -80,15 +113,13 @@ impl Map {
             height: MAP_HEIGHT as i32,
             revealed_tiles: vec![false; MAP_SIZE],
             visible_tiles: vec![false; MAP_SIZE],
+            blocked: vec![false; MAP_SIZE],
+            tile_content: vec![None; MAP_SIZE],
         };
-
-        const MAX_ROOMS: i32 = 30;
-
-        let mut rng = RandomNumberGenerator::new();
 
         // generate and draw rooms
         for _ in 0..MAX_ROOMS {
-            let new_room = Self::new_random_room(&mut rng);
+            let new_room = Self::new_random_room(rng);
             let intersects = map
                 .rooms
                 .iter()
@@ -113,6 +144,9 @@ impl Map {
             }
         }
 
+        // mark walls as blocked
+        map.populate_blocked();
+
         map
     }
 
@@ -121,7 +155,9 @@ impl Map {
         const MAX_SIZE: i32 = 10;
         let w = rng.range(MIN_SIZE, MAX_SIZE);
         let h = rng.range(MIN_SIZE, MAX_SIZE);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let x = rng.roll_dice(1, MAP_WIDTH as i32 - w - 1) - 1;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let y = rng.roll_dice(1, MAP_HEIGHT as i32 - h - 1) - 1;
         Rect::new(x, y, w, h)
     }
@@ -153,24 +189,17 @@ impl Map {
         }
     }
 
-    pub fn draw(&self, ctx: &mut Rltk) {
-        let mut y = 0;
-        let mut x = 0;
-        for (idx, tile) in self.tiles.iter().enumerate() {
-            if self.revealed_tiles[idx] {
-                let fg = if self.visible_tiles[idx] {
-                    tile.fg()
-                } else {
-                    tile.fg().to_greyscale()
-                };
-                ctx.set(x, y, fg, tile.bg(), tile.font_char());
-            }
-            // Move the coordinates
-            x += 1;
-            if x > 79 {
-                x = 0;
-                y += 1;
-            }
+    fn is_exit_valid(&self, x: i32, y: i32) -> bool {
+        if x < 1 || x > self.width - 1 || y < 1 || y > self.height - 1 {
+            return false;
+        }
+        let idx = self.xy_idx(x, y);
+        !self.blocked[idx]
+    }
+
+    pub fn populate_blocked(&mut self) {
+        for (idx, tile) in self.tiles.iter_mut().enumerate() {
+            self.blocked[idx] = *tile == TileType::Wall;
         }
     }
 }
@@ -187,5 +216,38 @@ impl Algorithm2D for Map {
 impl BaseMap for Map {
     fn is_opaque(&self, idx: usize) -> bool {
         self.tiles[idx] == TileType::Wall
+    }
+
+    fn get_pathing_distance(&self, idx1: usize, idx2: usize) -> f32 {
+        #[allow(clippy::cast_sign_loss)]
+        let w = self.width as usize;
+        let p1 = Point::new(idx1 % w, idx1 / w);
+        let p2 = Point::new(idx2 % w, idx2 / w);
+
+        rltk::DistanceAlg::Pythagoras.distance2d(p1, p2)
+    }
+
+    fn get_available_exits(&self, idx: usize) -> SmallVec<[(usize, f32); 10]> {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        let idx = idx as i32;
+        let x = idx % self.width;
+        let y = idx / self.width;
+
+        [
+            // Cardinal directions
+            (x - 1, y, 1.0),
+            (x + 1, y, 1.0),
+            (x, y - 1, 1.0),
+            (x, y + 1, 1.0),
+            // Diagonals
+            // (x - 1, y - 1, 1.45),
+            // (x + 1, y + 1, 1.45),
+            // (x + 1, y - 1, 1.45),
+            // (x - 1, y + 1, 1.45),
+        ]
+        .into_iter()
+        .filter(|&(x, y, _)| self.is_exit_valid(x, y))
+        .map(|(x, y, dist)| (self.xy_idx(x, y), dist))
+        .collect()
     }
 }
