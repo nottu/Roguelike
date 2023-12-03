@@ -2,7 +2,9 @@ use rltk::prelude::*;
 use specs::prelude::*;
 
 use crate::{
-    components::{CombatStats, Monster, Name, Position, SufferDamage, Viewshed, WantsToMelee},
+    components::{
+        CombatStats, Confusion, Monster, Name, Position, SufferDamage, Viewshed, WantsToMelee,
+    },
     gui::GameLog,
     map::Map,
     player::Player,
@@ -10,6 +12,7 @@ use crate::{
 };
 
 //
+#[derive(Debug)]
 pub struct VisibilitySystem;
 
 impl<'a> System<'a> for VisibilitySystem {
@@ -50,6 +53,7 @@ impl<'a> System<'a> for VisibilitySystem {
 //
 
 //
+#[derive(Debug)]
 pub struct MonsterAI;
 
 impl<'a> System<'a> for MonsterAI {
@@ -63,6 +67,7 @@ impl<'a> System<'a> for MonsterAI {
         ReadStorage<'a, Name>,
         WriteStorage<'a, WantsToMelee>,
         Entities<'a>,
+        WriteStorage<'a, Confusion>,
     );
     fn run(&mut self, data: Self::SystemData) {
         let (
@@ -75,6 +80,7 @@ impl<'a> System<'a> for MonsterAI {
             names,
             mut wants_to_melee,
             entities,
+            mut confused,
         ) = data;
         if *runstate != RunState::MonsterTurn {
             return;
@@ -90,6 +96,17 @@ impl<'a> System<'a> for MonsterAI {
         for (viewshed, _, name, monster_pos, monster_entity) in
             (&mut viewsheds, &monsters, &names, &mut positions, &entities).join()
         {
+            if let Some(confusion) = confused.get_mut(monster_entity) {
+                println!(
+                    "Monster {} confused for {} more turns",
+                    name.name, confusion.turns
+                );
+                confusion.turns -= 1;
+                if confusion.turns == 0 {
+                    confused.remove(monster_entity);
+                }
+                continue;
+            }
             if !viewshed.visible_tiles.contains(&player_pos) {
                 continue;
             }
@@ -122,14 +139,12 @@ impl<'a> System<'a> for MonsterAI {
             if path.success && path.steps.len() > 1 {
                 let idx = map.xy_idx(monster_pos.x, monster_pos.y);
                 map.blocked[idx] = false;
-                map.tile_content[idx] = None;
                 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
                 let path_steps = path.steps[1] as i32;
                 monster_pos.x = path_steps % map.width;
                 monster_pos.y = path_steps / map.width;
                 let idx = map.xy_idx(monster_pos.x, monster_pos.y);
                 map.blocked[idx] = true;
-                map.tile_content[idx] = Some(monster_entity);
                 viewshed.dirty = true;
             }
         }
@@ -138,6 +153,7 @@ impl<'a> System<'a> for MonsterAI {
 //
 
 //
+#[derive(Debug)]
 pub struct MeleeCombatSystem;
 impl<'a> System<'a> for MeleeCombatSystem {
     type SystemData = (
@@ -192,6 +208,7 @@ impl<'a> System<'a> for MeleeCombatSystem {
 }
 
 //
+#[derive(Debug)]
 pub struct DamageSystem;
 impl<'a> System<'a> for DamageSystem {
     type SystemData = (

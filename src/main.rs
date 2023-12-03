@@ -15,8 +15,9 @@ mod state;
 mod systems;
 
 use components::{
-    BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable,
-    SufferDamage, Viewshed, WantsToDrinkPotion, WantsToDropItem, WantsToMelee, WantsToPickUp,
+    AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, InBackpack, InflictsDamage,
+    Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable, SufferDamage, Viewshed,
+    WantsToDropItem, WantsToMelee, WantsToPickUp, WantsToUseItem,
 };
 use map::Map;
 use spawner::{spawn_player, spawn_room};
@@ -73,10 +74,17 @@ fn register_components(ecs: &mut World) {
     ecs.register::<WantsToMelee>();
     ecs.register::<SufferDamage>();
 
-    ecs.register::<Potion>();
+    ecs.register::<ProvidesHealing>();
     ecs.register::<Item>();
+    ecs.register::<Consumable>();
+
+    ecs.register::<Ranged>();
+    ecs.register::<InflictsDamage>();
+    ecs.register::<AreaOfEffect>();
+    ecs.register::<Confusion>();
+
     ecs.register::<InBackpack>();
     ecs.register::<WantsToPickUp>();
-    ecs.register::<WantsToDrinkPotion>();
+    ecs.register::<WantsToUseItem>();
     ecs.register::<WantsToDropItem>();
 }

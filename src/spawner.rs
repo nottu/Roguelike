@@ -3,8 +3,8 @@ use specs::prelude::*;
 
 use crate::{
     components::{
-        BlockedTile, CombatStats, InBackpack, Item, Monster, Name, Position, Potion, Renderable,
-        Viewshed,
+        AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, InBackpack, InflictsDamage,
+        Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable, Viewshed,
     },
     map::Rect,
     player::Player,
@@ -37,6 +37,9 @@ pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
         })
         .build();
 
+    // spawn player with a simple potion
+    // can we make this a potion that refreshes
+    // after some ammount of time/turns?
     ecs.create_entity()
         .with(InBackpack {
             owner: player_entity,
@@ -48,12 +51,30 @@ pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
             render_order: 2,
         })
         .with(Item)
-        .with(Potion { heal_amount: 8 })
+        .with(Consumable)
+        .with(ProvidesHealing { heal_amount: 4 })
         .with(Name {
             name: "Health Potion".to_string(),
         })
         .build();
 
+    magic_missile_scroll_builder(ecs)
+        .with(InBackpack {
+            owner: player_entity,
+        })
+        .build();
+    fireball_scroll_builder(ecs)
+        .with(InBackpack {
+            owner: player_entity,
+        })
+        .build();
+
+    fireball_scroll_builder(ecs).with(position).build();
+    confusion_scroll_builder(ecs)
+        .with(InBackpack {
+            owner: player_entity,
+        })
+        .build();
     player_entity
 }
 
@@ -84,14 +105,14 @@ impl EnemyType {
         .to_string()
     }
 }
-
+pub struct UnknownEnemyType;
 impl TryFrom<i32> for EnemyType {
-    type Error = String;
+    type Error = UnknownEnemyType;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(Self::Orc),
             2 => Ok(Self::Goblin),
-            n => Err(format!("Unknown Enemy Type {n}")),
+            _ => Err(UnknownEnemyType),
         }
     }
 }
@@ -119,7 +140,10 @@ fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: &EnemyType) -> E
         .build()
 }
 
-pub fn spawn_random_monster(ecs: &mut World, position: Position) -> Result<Entity, String> {
+pub fn spawn_random_monster(
+    ecs: &mut World,
+    position: Position,
+) -> Result<Entity, UnknownEnemyType> {
     let roll: i32 = ecs.fetch_mut::<RandomNumberGenerator>().roll_dice(1, 2);
     let enemy_type = EnemyType::try_from(roll)?;
     Ok(spawn_enemy(ecs, position, &enemy_type))
@@ -143,16 +167,50 @@ pub fn spawn_room(ecs: &mut World, room: &Rect) {
             let _enemy_entity = spawn_random_monster(ecs, Position { x, y });
         }
     }
-    // same but for potions
+    // same but for items
     {
-        let potion_points: Vec<(i32, i32)> = {
+        let item_points: Vec<(i32, i32)> = {
             let mut rng = ecs.fetch_mut::<RandomNumberGenerator>();
             let num_items = rng.roll_dice(1, MAX_ITEMS) - 1;
             generate_random_room_positions(room, num_items, &mut rng)
+                .into_iter()
+                .collect()
         };
 
-        for (x, y) in potion_points {
-            let _enemy_entity = spawn_potion(ecs, Position { x, y });
+        let item_types: Vec<ItemType> = (0..item_points.len())
+            .map(|_| ItemType::random_item(ecs))
+            .collect();
+
+        for ((x, y), item_type) in item_points.into_iter().zip(item_types) {
+            item_type.builder(ecs).with(Position { x, y }).build();
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ItemType {
+    HealingPotion,
+    MagicMissileScroll,
+    FireBallScroll,
+    ConfusionScroll,
+}
+impl<'a> ItemType {
+    fn builder(&'a self, ecs: &'a mut World) -> EntityBuilder {
+        match self {
+            Self::HealingPotion => healing_potion_builder(ecs),
+            Self::MagicMissileScroll => magic_missile_scroll_builder(ecs),
+            Self::FireBallScroll => fireball_scroll_builder(ecs),
+            Self::ConfusionScroll => confusion_scroll_builder(ecs),
+        }
+    }
+    fn random_item(ecs: &'a World) -> Self {
+        let mut rng = ecs.fetch_mut::<RandomNumberGenerator>();
+        match rng.roll_dice(1, 3) {
+            1 => Self::HealingPotion,
+            2 => Self::FireBallScroll,
+            3 => Self::MagicMissileScroll,
+            4 => Self::ConfusionScroll,
+            n => unimplemented!("scroll type {n} not implemented!"),
         }
     }
 }
@@ -178,11 +236,12 @@ fn generate_random_room_positions(
     positions
 }
 
-//
-
-fn spawn_potion(ecs: &mut World, position: Position) -> Entity {
+/// Return an `EntityBuilder` with components to describe a healing potion
+/// that can be composed with more `Components`
+/// like a `Position` to be rendered on the map or a `InBag` to be in an
+/// entity's inventory
+fn healing_potion_builder(ecs: &mut World) -> EntityBuilder {
     ecs.create_entity()
-        .with(position)
         .with(Renderable {
             glyph: rltk::to_cp437('¡'),
             fg: RGB::named(MAGENTA),
@@ -190,9 +249,73 @@ fn spawn_potion(ecs: &mut World, position: Position) -> Entity {
             render_order: 2,
         })
         .with(Item)
-        .with(Potion { heal_amount: 8 })
+        .with(Consumable)
+        .with(ProvidesHealing { heal_amount: 8 })
         .with(Name {
             name: "Health Potion".to_string(),
         })
-        .build()
+}
+
+/// Return an `EntityBuilder` with components to describe a magic missle scroll
+/// that can be composed with more `Components`
+/// like a `Position` to be rendered on the map or a `InBag` to be in an
+/// entity's inventory
+fn magic_missile_scroll_builder(ecs: &mut World) -> EntityBuilder {
+    ecs.create_entity()
+        .with(Renderable {
+            glyph: rltk::to_cp437(')'),
+            fg: RGB::named(CYAN),
+            bg: RGB::named(BLACK),
+            render_order: 2,
+        })
+        .with(Name {
+            name: "Magic Missile Scroll".to_string(),
+        })
+        .with(Item)
+        .with(Consumable)
+        .with(Ranged { range: 6 })
+        .with(InflictsDamage { damage: 8 })
+}
+
+/// Return an `EntityBuilder` with components to describe a fireball scroll
+/// that can be composed with more `Components`
+/// like a `Position` to be rendered on the map or a `InBag` to be in an
+/// entity's inventory
+fn fireball_scroll_builder(ecs: &mut World) -> EntityBuilder {
+    ecs.create_entity()
+        .with(Renderable {
+            glyph: rltk::to_cp437(')'),
+            fg: RGB::named(ORANGE),
+            bg: RGB::named(BLACK),
+            render_order: 2,
+        })
+        .with(Name {
+            name: "Fireball Scroll".to_string(),
+        })
+        .with(Item)
+        .with(Consumable)
+        .with(Ranged { range: 6 })
+        .with(InflictsDamage { damage: 20 })
+        .with(AreaOfEffect { radius: 3 })
+}
+
+/// Return an `EntityBuilder` with components to describe a confussion scroll
+/// that can be composed with more `Components`
+/// like a `Position` to be rendered on the map or a `InBag` to be in an
+/// entity's inventory
+fn confusion_scroll_builder(ecs: &mut World) -> EntityBuilder {
+    ecs.create_entity()
+        .with(Renderable {
+            glyph: rltk::to_cp437(')'),
+            fg: RGB::named(PINK),
+            bg: RGB::named(BLACK),
+            render_order: 2,
+        })
+        .with(Name {
+            name: "Confusion Scroll".to_string(),
+        })
+        .with(Item)
+        .with(Consumable)
+        .with(Ranged { range: 6 })
+        .with(Confusion { turns: 4 })
 }

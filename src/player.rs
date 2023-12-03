@@ -28,25 +28,27 @@ fn move_player(delta_x: i32, delta_y: i32, ecs: &World) {
         let new_y = (pos.y + delta_y).clamp(0, 49);
         let destination_idx = map.xy_idx(new_x, new_y);
 
-        if !map.blocked[destination_idx] {
+        if map.blocked[destination_idx] {
+            for potential_target in &map.tile_content[destination_idx] {
+                combat_stats.get(*potential_target).map_or_else(
+                    || console::log("cant attack"),
+                    |_t| {
+                        wants_to_melee
+                            .insert(
+                                player_entity,
+                                WantsToMelee {
+                                    target: *potential_target,
+                                },
+                            )
+                            .expect("Failed to insert WantsToMelee");
+                    },
+                );
+            }
+        } else {
             pos.x = new_x;
             pos.y = new_y;
 
             viewshed.dirty = true;
-        } else if let Some(potential_target) = map.tile_content[destination_idx] {
-            combat_stats.get(potential_target).map_or_else(
-                || console::log("cant attack"),
-                |_t| {
-                    wants_to_melee
-                        .insert(
-                            player_entity,
-                            WantsToMelee {
-                                target: potential_target,
-                            },
-                        )
-                        .expect("Failed to insert WantsToMelee");
-                },
-            );
         }
     }
 }
@@ -102,4 +104,15 @@ pub fn input(gs: &State, ctx: &Rltk) -> RunState {
         _ => return RunState::AwaitingInput,
     };
     RunState::PlayerTurn
+}
+
+pub fn fetch_player_entity(ecs: &World) -> Entity {
+    let players = ecs.read_storage::<Player>();
+    let entities = ecs.entities();
+
+    (&entities, &players)
+        .join()
+        .map(|(entity, _p)| entity)
+        .next()
+        .unwrap()
 }

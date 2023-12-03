@@ -2,6 +2,8 @@ use rltk::prelude::*;
 use specs::prelude::*;
 use std::cmp::{max, min};
 
+use crate::components::Position;
+
 pub const MAP_WIDTH: usize = 80;
 pub const MAP_HEIGHT: usize = 43;
 pub const MAP_SIZE: usize = MAP_WIDTH * MAP_HEIGHT;
@@ -74,7 +76,7 @@ pub struct Map {
     pub revealed_tiles: Vec<bool>,
     pub visible_tiles: Vec<bool>,
     pub blocked: Vec<bool>,
-    pub tile_content: Vec<Option<Entity>>,
+    pub tile_content: Vec<Vec<Entity>>,
 }
 
 impl Map {
@@ -114,7 +116,7 @@ impl Map {
             revealed_tiles: vec![false; MAP_SIZE],
             visible_tiles: vec![false; MAP_SIZE],
             blocked: vec![false; MAP_SIZE],
-            tile_content: vec![None; MAP_SIZE],
+            tile_content: vec![vec![]; MAP_SIZE],
         };
 
         // generate and draw rooms
@@ -202,6 +204,12 @@ impl Map {
             self.blocked[idx] = *tile == TileType::Wall;
         }
     }
+
+    fn reset_tiles(&mut self) {
+        for content in &mut self.tile_content {
+            content.clear();
+        }
+    }
 }
 
 impl Algorithm2D for Map {
@@ -249,5 +257,23 @@ impl BaseMap for Map {
         .filter(|&(x, y, _)| self.is_exit_valid(x, y))
         .map(|(x, y, dist)| (self.xy_idx(x, y), dist))
         .collect()
+    }
+}
+
+pub struct PositionUpdateSystem;
+
+impl<'a> System<'a> for PositionUpdateSystem {
+    type SystemData = (
+        Entities<'a>,
+        ReadStorage<'a, Position>,
+        WriteExpect<'a, Map>,
+    );
+    fn run(&mut self, data: Self::SystemData) {
+        let (entities, positions, mut map) = data;
+        map.reset_tiles();
+        for (entity, position) in (&entities, &positions).join() {
+            let idx = map.xy_idx(position.x, position.y);
+            map.tile_content[idx].push(entity);
+        }
     }
 }

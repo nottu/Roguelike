@@ -1,9 +1,11 @@
 use crate::{
-    components::{CombatStats, Name, Position, Renderable},
-    gui::{draw_ui, drop_item_menu, show_inventory, GameLog, ItemMenuResult},
-    inventory_system::{ItemCollectionSystem, ItemDropSystem, PotionSystem},
-    map::Map,
-    player::{self, Player},
+    components::{
+        CombatStats, Name, Position, Ranged, Renderable, WantsToDropItem, WantsToUseItem,
+    },
+    gui::{draw_ui, drop_item_menu, ranged_target, show_inventory, GameLog, ItemMenuResult},
+    inventory_system::{ItemCollectionSystem, ItemDropSystem, ItemUseSystem},
+    map::{self, Map},
+    player::{self, fetch_player_entity, Player},
     systems::{DamageSystem, MeleeCombatSystem, MonsterAI, VisibilitySystem},
 };
 use rltk::prelude::*;
@@ -17,40 +19,61 @@ impl State {
     fn run_systems(&mut self) {
         // visibility system
         {
-            let mut vis = VisibilitySystem;
-            vis.run_now(&self.ecs);
+            let mut system = VisibilitySystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // monster ai
         {
-            let mut monster_ai = MonsterAI;
-            monster_ai.run_now(&self.ecs);
+            let mut system = MonsterAI;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // melee combat
         {
-            let mut melee_system = MeleeCombatSystem;
-            melee_system.run_now(&self.ecs);
+            let mut system = MeleeCombatSystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // damage system
         {
-            let mut damage_system = DamageSystem;
-            damage_system.run_now(&self.ecs);
+            let mut system = DamageSystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // item collection
         {
-            let mut item_collection_system = ItemCollectionSystem;
-            item_collection_system.run_now(&self.ecs);
+            let mut system = ItemCollectionSystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // potion system
         {
-            let mut potion_system = PotionSystem;
-            potion_system.run_now(&self.ecs);
+            let mut system = ItemUseSystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
         // item droping
         {
-            let mut item_drop_system = ItemDropSystem;
-            item_drop_system.run_now(&self.ecs);
+            let mut system = ItemDropSystem;
+            //dbg!((&system, self.ecs.read_storage::<Player>().count()));
+            system.run_now(&self.ecs);
+            // self.ecs.maintain();
         }
+        // map position system, what entity is in each tile
+        {
+            let mut system = map::PositionUpdateSystem;
+            system.run_now(&self.ecs);
+        }
+        //dbg!(self.ecs.read_storage::<Player>().count());
         self.ecs.maintain();
+        //dbg!(self.ecs.read_storage::<Player>().count());
     }
 
     fn remove_dead(&mut self) {
@@ -86,6 +109,7 @@ impl State {
         };
 
         for (victim, _position) in &dead {
+            // println!("Removing dead entity");
             self.ecs
                 .delete_entity(*victim)
                 .expect("Unable to delete dead entity");
@@ -108,12 +132,17 @@ impl GameState for State {
         // rendering system
         ctx.cls();
         self.remove_dead();
+        let runstate = *self.ecs.fetch::<RunState>();
+        // render debug info
+        {
+            ctx.print(1, 1, &format!("FPS: {}", ctx.fps));
+            ctx.print(1, 2, &format!("RunState: {runstate:?}"));
+        }
         // render map
         {
             let map = self.ecs.fetch::<Map>();
 
             map.draw(ctx);
-            ctx.print(1, 1, &format!("{}", ctx.fps));
             let positions = self.ecs.read_storage::<Position>();
             let renderables = self.ecs.read_storage::<Renderable>();
             let mut render_data: Vec<_> = (&positions, &renderables).join().collect();
@@ -127,7 +156,6 @@ impl GameState for State {
         }
         // run state machine
         {
-            let runstate = *self.ecs.fetch::<RunState>();
             let new_runstate = match runstate {
                 RunState::MonsterTurn | RunState::PreRun => {
                     self.run_systems();
@@ -141,13 +169,57 @@ impl GameState for State {
                 RunState::ShowInventory => match show_inventory(&self.ecs, ctx) {
                     ItemMenuResult::NoResponse => RunState::ShowInventory,
                     ItemMenuResult::Cancel => RunState::AwaitingInput,
-                    ItemMenuResult::Selected(_selected_entity) => RunState::PlayerTurn,
+                    ItemMenuResult::Selected(item) => {
+                        let ranged_target = self.ecs.read_storage::<Ranged>();
+                        if let Some(ranged_item) = ranged_target.get(item) {
+                            RunState::ShowTargeting {
+                                range: ranged_item.range,
+                                item,
+                            }
+                        } else {
+                            let player_entity = fetch_player_entity(&self.ecs);
+                            self.ecs
+                                .write_storage::<WantsToUseItem>()
+                                .insert(
+                                    player_entity,
+                                    WantsToUseItem {
+                                        item,
+                                        target: player_entity,
+                                    },
+                                )
+                                .expect("Failed to WantsToDrinkPotion");
+                            RunState::PlayerTurn
+                        }
+                    }
                 },
                 RunState::ShowDropItem => match drop_item_menu(&self.ecs, ctx) {
                     ItemMenuResult::NoResponse => RunState::ShowDropItem,
                     ItemMenuResult::Cancel => RunState::AwaitingInput,
-                    ItemMenuResult::Selected(_selected_item) => RunState::PlayerTurn,
+                    ItemMenuResult::Selected(item) => {
+                        let player_entity = fetch_player_entity(&self.ecs);
+                        self.ecs
+                            .write_storage::<WantsToDropItem>()
+                            .insert(player_entity, WantsToDropItem { item })
+                            .expect("Failed to WantsToDropItem");
+                        RunState::PlayerTurn
+                    }
                 },
+                RunState::ShowTargeting { range, item } => {
+                    // needs mut reference since it creates new entity at click position.
+                    match ranged_target(&mut self.ecs, ctx, range) {
+                        ItemMenuResult::NoResponse => RunState::ShowTargeting { range, item },
+                        ItemMenuResult::Cancel => RunState::AwaitingInput,
+                        // the target entity has a position attached
+                        ItemMenuResult::Selected(target) => {
+                            let player_entity = fetch_player_entity(&self.ecs);
+                            self.ecs
+                                .write_storage::<WantsToUseItem>()
+                                .insert(player_entity, WantsToUseItem { item, target })
+                                .expect("Failed to use targeted item");
+                            RunState::PlayerTurn
+                        }
+                    }
+                }
             };
             *self.ecs.write_resource::<RunState>() = new_runstate;
         }
@@ -164,4 +236,5 @@ pub enum RunState {
     MonsterTurn,
     ShowInventory,
     ShowDropItem,
+    ShowTargeting { range: i32, item: Entity },
 }

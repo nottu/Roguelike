@@ -2,9 +2,9 @@ use rltk::prelude::*;
 use specs::prelude::*;
 
 use crate::{
-    components::{CombatStats, InBackpack, Name, Position, WantsToDrinkPotion, WantsToDropItem},
+    components::{CombatStats, InBackpack, Name, Position, Viewshed},
     map::Map,
-    player::Player,
+    player::{fetch_player_entity, Player},
 };
 
 pub struct GameLog {
@@ -147,51 +147,13 @@ pub enum ItemMenuResult {
 }
 
 pub fn show_inventory(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
-    let players = ecs.read_storage::<Player>();
-    let entities = ecs.entities();
-
-    let Some(player_entity) = (&entities, &players)
-        .join()
-        .map(|(entity, _p)| entity)
-        .next()
-    else {
-        return ItemMenuResult::Cancel;
-    };
-    match show_inventory_menu(ecs, ctx, player_entity, "Inventory") {
-        ItemMenuResult::Selected(item) => {
-            ecs.write_storage::<WantsToDrinkPotion>()
-                .insert(player_entity, WantsToDrinkPotion { potion: item })
-                .expect("Failed to WantsToDrinkPotion");
-            ecs.fetch_mut::<GameLog>()
-                .log("Tyring to drink potion".to_string());
-            ItemMenuResult::Selected(item)
-        }
-        menu_result => menu_result,
-    }
+    let player_entity = fetch_player_entity(ecs);
+    show_inventory_menu(ecs, ctx, player_entity, "Inventory")
 }
 
 pub fn drop_item_menu(ecs: &World, ctx: &mut Rltk) -> ItemMenuResult {
-    let players = ecs.read_storage::<Player>();
-    let entities = ecs.entities();
-
-    let Some(player_entity) = (&entities, &players)
-        .join()
-        .map(|(entity, _p)| entity)
-        .next()
-    else {
-        return ItemMenuResult::Cancel;
-    };
-    match show_inventory_menu(ecs, ctx, player_entity, "Drop Which Item?") {
-        ItemMenuResult::Selected(item) => {
-            ecs.write_storage::<WantsToDropItem>()
-                .insert(player_entity, WantsToDropItem { item })
-                .expect("Failed to WantsToDropItem");
-            ecs.fetch_mut::<GameLog>()
-                .log("Tyring to drop item".to_string());
-            ItemMenuResult::Selected(item)
-        }
-        menu_result => menu_result,
-    }
+    let player_entity = fetch_player_entity(ecs);
+    show_inventory_menu(ecs, ctx, player_entity, "Drop Which Item?")
 }
 
 fn show_inventory_menu(
@@ -272,4 +234,59 @@ fn show_inventory_menu(
             }
         }
     })
+}
+
+fn get_in_range_points(ecs: &World, entity: Entity, range: i32) -> Option<Vec<Point>> {
+    let player_pos: Point = ecs.read_storage::<Position>().get(entity).unwrap().into();
+
+    let viewshed = ecs.read_storage::<Viewshed>();
+    #[allow(clippy::cast_precision_loss)]
+    viewshed.get(entity).map(|viewshed| {
+        viewshed
+            .visible_tiles
+            .iter()
+            .filter(|&point| {
+                rltk::DistanceAlg::Pythagoras.distance2d(*point, player_pos) <= range as f32
+            })
+            .map(std::borrow::ToOwned::to_owned)
+            .collect()
+    })
+}
+
+pub fn ranged_target(ecs: &mut World, ctx: &mut Rltk, range: i32) -> ItemMenuResult {
+    let player_entity = fetch_player_entity(ecs);
+    let Some(in_range_points) = get_in_range_points(ecs, player_entity, range) else {
+        return ItemMenuResult::Cancel;
+    };
+
+    ctx.print_color(
+        5,
+        0,
+        RGB::named(YELLOW),
+        RGB::named(BLACK),
+        "Select Target:",
+    );
+    for Point { x, y } in &in_range_points {
+        ctx.set_bg(*x, *y, RGB::named(BLUE));
+    }
+
+    let mouse_pos = {
+        let (x, y) = ctx.mouse_pos();
+        Point { x, y }
+    };
+
+    if ctx.left_click {
+        if in_range_points
+            .iter()
+            .any(|&in_range| in_range.x == mouse_pos.x && in_range.y == mouse_pos.y)
+        {
+            // valid target
+            let click_position_entity = ecs.create_entity().with(Position::from(mouse_pos)).build();
+            ItemMenuResult::Selected(click_position_entity)
+        } else {
+            ItemMenuResult::Cancel
+        }
+    } else {
+        ItemMenuResult::NoResponse
+    }
 }

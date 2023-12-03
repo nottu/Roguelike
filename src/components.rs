@@ -2,6 +2,8 @@ use rltk::prelude::*;
 use specs::prelude::*;
 use specs_derive::Component;
 
+/// Core components
+
 #[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
 pub struct Position {
     pub x: i32,
@@ -17,6 +19,15 @@ impl From<&Position> for Point {
     }
 }
 
+impl From<Point> for Position {
+    fn from(point: Point) -> Self {
+        Self {
+            x: point.x,
+            y: point.y,
+        }
+    }
+}
+
 #[derive(Debug, Component)]
 pub struct Renderable {
     pub glyph: FontCharType,
@@ -25,8 +36,7 @@ pub struct Renderable {
     pub render_order: i32,
 }
 
-#[derive(Debug, Component)]
-pub struct LeftMover;
+/// Player and Enemies
 
 #[derive(Debug, Component)]
 pub struct Viewshed {
@@ -84,13 +94,18 @@ impl SufferDamage {
     }
 }
 
+/// Items and Inventory
+
 #[derive(Debug, Component)]
 pub struct Item;
 
 #[derive(Debug, Component)]
-pub struct Potion {
+pub struct ProvidesHealing {
     pub heal_amount: i32,
 }
+
+#[derive(Debug, Component)]
+pub struct Consumable;
 
 #[derive(Debug, Component)]
 pub struct InBackpack {
@@ -103,11 +118,32 @@ pub struct WantsToPickUp {
 }
 
 #[derive(Debug, Component)]
-pub struct WantsToDrinkPotion {
-    pub potion: Entity,
+pub struct WantsToUseItem {
+    pub item: Entity,
+    pub target: Entity,
 }
 
 #[derive(Debug, Component)]
 pub struct WantsToDropItem {
     pub item: Entity,
+}
+
+#[derive(Debug, Component)]
+pub struct Ranged {
+    pub range: i32,
+}
+
+#[derive(Debug, Component)]
+pub struct InflictsDamage {
+    pub damage: i32,
+}
+
+#[derive(Debug, Component)]
+pub struct AreaOfEffect {
+    pub radius: i32,
+}
+
+#[derive(Debug, Component, Clone, Copy)]
+pub struct Confusion {
+    pub turns: i32,
 }
