@@ -290,3 +290,83 @@ pub fn ranged_target(ecs: &mut World, ctx: &mut Rltk, range: i32) -> ItemMenuRes
         ItemMenuResult::NoResponse
     }
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum MainMenuOption {
+    NewGame,
+    LoadGame,
+    Quit,
+}
+
+impl MainMenuOption {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::NewGame => "New Game",
+            Self::LoadGame => "Load Game",
+            Self::Quit => "Quit",
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct MainMenuItem {
+    item: MainMenuOption,
+    hovered: bool,
+}
+
+impl MainMenuItem {
+    pub const NEW_GAME: Self = Self {
+        item: MainMenuOption::NewGame,
+        hovered: false,
+    };
+    pub const LOAD_GAME: Self = Self {
+        item: MainMenuOption::LoadGame,
+        hovered: false,
+    };
+    pub const QUIT: Self = Self {
+        item: MainMenuOption::Quit,
+        hovered: false,
+    };
+}
+
+pub fn draw_main_menu(
+    menu_items: &mut [MainMenuItem],
+    _ecs: &mut World,
+    ctx: &mut Rltk,
+) -> Option<MainMenuOption> {
+    ctx.print_color_centered(
+        15,
+        RGB::named(YELLOW),
+        RGB::named(BLACK),
+        "Rust Roguelike Tutorial",
+    );
+    let mut selection_idx: usize = 0;
+    for (idx, menu_item) in menu_items.iter().enumerate() {
+        ctx.print_color_centered(
+            24 + 2 * idx,
+            if menu_item.hovered {
+                selection_idx = idx;
+                RGB::named(MAGENTA)
+            } else {
+                RGB::named(WHITE)
+            },
+            RGB::named(BLACK),
+            menu_item.item.as_str(),
+        );
+    }
+    // handle item selection
+    menu_items[selection_idx].hovered = false;
+    selection_idx = ctx.key.map_or(selection_idx, |key| match key {
+        VirtualKeyCode::Up => selection_idx.checked_sub(1).unwrap_or(menu_items.len() - 1),
+        VirtualKeyCode::Down => selection_idx + 1,
+        _ => selection_idx,
+    }) % menu_items.len();
+    menu_items[selection_idx].hovered = true;
+
+    // handle item choosing...
+    ctx.key.and_then(|key| match key {
+        VirtualKeyCode::Escape => Some(MainMenuOption::Quit),
+        VirtualKeyCode::Return => menu_items.get(selection_idx).map(|item| item.item),
+        _ => None,
+    })
+}

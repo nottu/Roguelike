@@ -2,7 +2,10 @@ use crate::{
     components::{
         CombatStats, Name, Position, Ranged, Renderable, WantsToDropItem, WantsToUseItem,
     },
-    gui::{draw_ui, drop_item_menu, ranged_target, show_inventory, GameLog, ItemMenuResult},
+    gui::{
+        self, draw_ui, drop_item_menu, ranged_target, show_inventory, GameLog, ItemMenuResult,
+        MainMenuItem,
+    },
     inventory_system::{ItemCollectionSystem, ItemDropSystem, ItemUseSystem},
     map::{self, Map},
     player::{self, fetch_player_entity, Player},
@@ -123,7 +126,102 @@ impl State {
     }
 
     pub fn new() -> Self {
-        Self { ecs: World::new() }
+        let mut ecs = World::new();
+        ecs.insert(RunState::PreRun);
+        ecs.insert(AppState::new_main_menu());
+        Self { ecs }
+    }
+
+    fn render_map(&mut self, ctx: &mut Rltk) {
+        let map = self.ecs.fetch::<Map>();
+
+        map.draw(ctx);
+        let positions = self.ecs.read_storage::<Position>();
+        let renderables = self.ecs.read_storage::<Renderable>();
+        let mut render_data: Vec<_> = (&positions, &renderables).join().collect();
+        render_data.sort_by_key(|(_p, renderable)| -renderable.render_order);
+        for (pos, render) in render_data {
+            let idx = map.xy_idx(pos.x, pos.y);
+            if map.visible_tiles[idx] {
+                ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
+            }
+        }
+    }
+    fn render_debug_info(&mut self, ctx: &mut Rltk) {
+        let runstate = *self.ecs.fetch::<RunState>();
+        ctx.print(1, 1, &format!("FPS: {}", ctx.fps));
+        ctx.print(1, 2, &format!("RunState: {runstate:?}"));
+    }
+    fn next_game_state(&mut self, ctx: &mut Rltk) -> RunState {
+        let runstate = *self.ecs.fetch::<RunState>();
+        match runstate {
+            RunState::MonsterTurn | RunState::PreRun => {
+                self.run_systems();
+                RunState::AwaitingInput
+            }
+            RunState::AwaitingInput => player::input(self, ctx),
+            RunState::PlayerTurn => {
+                self.run_systems();
+                RunState::MonsterTurn
+            }
+            RunState::ShowInventory => match show_inventory(&self.ecs, ctx) {
+                ItemMenuResult::NoResponse => RunState::ShowInventory,
+                ItemMenuResult::Cancel => RunState::AwaitingInput,
+                ItemMenuResult::Selected(item) => {
+                    let ranged_target = self.ecs.read_storage::<Ranged>();
+                    if let Some(ranged_item) = ranged_target.get(item) {
+                        RunState::ShowTargeting {
+                            range: ranged_item.range,
+                            item,
+                        }
+                    } else {
+                        let player_entity = fetch_player_entity(&self.ecs);
+                        self.ecs
+                            .write_storage::<WantsToUseItem>()
+                            .insert(
+                                player_entity,
+                                WantsToUseItem {
+                                    item,
+                                    target: player_entity,
+                                },
+                            )
+                            .expect("Failed to use item");
+                        RunState::PlayerTurn
+                    }
+                }
+            },
+            RunState::ShowDropItem => match drop_item_menu(&self.ecs, ctx) {
+                ItemMenuResult::NoResponse => RunState::ShowDropItem,
+                ItemMenuResult::Cancel => RunState::AwaitingInput,
+                ItemMenuResult::Selected(item) => {
+                    let player_entity = fetch_player_entity(&self.ecs);
+                    self.ecs
+                        .write_storage::<WantsToDropItem>()
+                        .insert(player_entity, WantsToDropItem { item })
+                        .expect("Failed to WantsToDropItem");
+                    RunState::PlayerTurn
+                }
+            },
+            RunState::ShowTargeting { range, item } => {
+                // needs mut reference since it creates new entity at click position.
+                match ranged_target(&mut self.ecs, ctx, range) {
+                    ItemMenuResult::NoResponse => RunState::ShowTargeting { range, item },
+                    ItemMenuResult::Cancel => RunState::AwaitingInput,
+                    // the target entity has a position attached
+                    ItemMenuResult::Selected(target) => {
+                        let player_entity = fetch_player_entity(&self.ecs);
+                        self.ecs
+                            .write_storage::<WantsToUseItem>()
+                            .insert(player_entity, WantsToUseItem { item, target })
+                            .expect("Failed to use targeted item");
+                        RunState::PlayerTurn
+                    }
+                }
+            } // RunState::MainMenu => {
+              //     *self.ecs.fetch_mut::<AppState>() = AppState::new_main_menu();
+              //     RunState::PreRun
+              // }
+        }
     }
 }
 
@@ -131,99 +229,36 @@ impl GameState for State {
     fn tick(&mut self, ctx: &mut Rltk) {
         // rendering system
         ctx.cls();
-        self.remove_dead();
-        let runstate = *self.ecs.fetch::<RunState>();
-        // render debug info
-        {
-            ctx.print(1, 1, &format!("FPS: {}", ctx.fps));
-            ctx.print(1, 2, &format!("RunState: {runstate:?}"));
-        }
-        // render map
-        {
-            let map = self.ecs.fetch::<Map>();
-
-            map.draw(ctx);
-            let positions = self.ecs.read_storage::<Position>();
-            let renderables = self.ecs.read_storage::<Renderable>();
-            let mut render_data: Vec<_> = (&positions, &renderables).join().collect();
-            render_data.sort_by_key(|(_p, renderable)| -renderable.render_order);
-            for (pos, render) in render_data {
-                let idx = map.xy_idx(pos.x, pos.y);
-                if map.visible_tiles[idx] {
-                    ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
+        // probably not very efficient..
+        // need to find a better way that does not require a clone!
+        let app_state = (*self.ecs.fetch::<AppState>()).clone();
+        match app_state {
+            AppState::MainMenu { mut items } => {
+                // draw menu or something...
+                if let Some(selection) = gui::draw_main_menu(&mut items, &mut self.ecs, ctx) {
+                    match selection {
+                        gui::MainMenuOption::NewGame => {
+                            // do something first?
+                            *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
+                        }
+                        gui::MainMenuOption::Quit => ctx.quit(),
+                        gui::MainMenuOption::LoadGame => unimplemented!(),
+                    }
+                } else {
+                    *self.ecs.fetch_mut::<AppState>() = AppState::MainMenu { items };
                 }
             }
-        }
-        // run state machine
-        {
-            let new_runstate = match runstate {
-                RunState::MonsterTurn | RunState::PreRun => {
-                    self.run_systems();
-                    RunState::AwaitingInput
-                }
-                RunState::AwaitingInput => player::input(self, ctx),
-                RunState::PlayerTurn => {
-                    self.run_systems();
-                    RunState::MonsterTurn
-                }
-                RunState::ShowInventory => match show_inventory(&self.ecs, ctx) {
-                    ItemMenuResult::NoResponse => RunState::ShowInventory,
-                    ItemMenuResult::Cancel => RunState::AwaitingInput,
-                    ItemMenuResult::Selected(item) => {
-                        let ranged_target = self.ecs.read_storage::<Ranged>();
-                        if let Some(ranged_item) = ranged_target.get(item) {
-                            RunState::ShowTargeting {
-                                range: ranged_item.range,
-                                item,
-                            }
-                        } else {
-                            let player_entity = fetch_player_entity(&self.ecs);
-                            self.ecs
-                                .write_storage::<WantsToUseItem>()
-                                .insert(
-                                    player_entity,
-                                    WantsToUseItem {
-                                        item,
-                                        target: player_entity,
-                                    },
-                                )
-                                .expect("Failed to WantsToDrinkPotion");
-                            RunState::PlayerTurn
-                        }
-                    }
-                },
-                RunState::ShowDropItem => match drop_item_menu(&self.ecs, ctx) {
-                    ItemMenuResult::NoResponse => RunState::ShowDropItem,
-                    ItemMenuResult::Cancel => RunState::AwaitingInput,
-                    ItemMenuResult::Selected(item) => {
-                        let player_entity = fetch_player_entity(&self.ecs);
-                        self.ecs
-                            .write_storage::<WantsToDropItem>()
-                            .insert(player_entity, WantsToDropItem { item })
-                            .expect("Failed to WantsToDropItem");
-                        RunState::PlayerTurn
-                    }
-                },
-                RunState::ShowTargeting { range, item } => {
-                    // needs mut reference since it creates new entity at click position.
-                    match ranged_target(&mut self.ecs, ctx, range) {
-                        ItemMenuResult::NoResponse => RunState::ShowTargeting { range, item },
-                        ItemMenuResult::Cancel => RunState::AwaitingInput,
-                        // the target entity has a position attached
-                        ItemMenuResult::Selected(target) => {
-                            let player_entity = fetch_player_entity(&self.ecs);
-                            self.ecs
-                                .write_storage::<WantsToUseItem>()
-                                .insert(player_entity, WantsToUseItem { item, target })
-                                .expect("Failed to use targeted item");
-                            RunState::PlayerTurn
-                        }
-                    }
-                }
-            };
-            *self.ecs.write_resource::<RunState>() = new_runstate;
-        }
-        draw_ui(&self.ecs, ctx);
+            AppState::InGame => {
+                self.remove_dead();
+
+                self.render_map(ctx);
+                // run state machine
+                *self.ecs.fetch_mut::<RunState>() = self.next_game_state(ctx);
+
+                draw_ui(&self.ecs, ctx);
+            }
+        };
+        self.render_debug_info(ctx);
     }
 }
 
@@ -237,4 +272,24 @@ pub enum RunState {
     ShowInventory,
     ShowDropItem,
     ShowTargeting { range: i32, item: Entity },
+    // MainMenu,
+}
+
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AppState {
+    MainMenu { items: Vec<MainMenuItem> },
+    InGame,
+}
+
+impl AppState {
+    fn new_main_menu() -> Self {
+        Self::MainMenu {
+            items: vec![
+                MainMenuItem::NEW_GAME,
+                MainMenuItem::LOAD_GAME,
+                MainMenuItem::QUIT,
+            ],
+        }
+    }
 }

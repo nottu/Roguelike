@@ -21,7 +21,7 @@ use components::{
 };
 use map::Map;
 use spawner::{spawn_player, spawn_room};
-use state::{RunState, State};
+use state::State;
 
 fn main() -> BError {
     let context = {
@@ -51,7 +51,6 @@ fn main() -> BError {
     }
 
     gs.ecs.insert(map);
-    gs.ecs.insert(RunState::PreRun);
 
     // Insert GameLog
     let mut game_log = GameLog::new();
