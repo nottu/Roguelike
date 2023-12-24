@@ -1,10 +1,10 @@
 use rltk::prelude::*;
-use specs::prelude::*;
-use specs_derive::Component;
+use serde::{Deserialize, Serialize};
+#[allow(deprecated)]
+use specs::{prelude::*, saveload::ConvertSaveload, saveload::Marker, Entity};
+use specs_derive::{Component, ConvertSaveload};
 
-/// Core components
-
-#[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Component, PartialEq, Eq, Clone, Copy, ConvertSaveload)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
@@ -28,7 +28,7 @@ impl From<Point> for Position {
     }
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone, Copy, ConvertSaveload)]
 pub struct Renderable {
     pub glyph: FontCharType,
     pub fg: RGB,
@@ -38,25 +38,25 @@ pub struct Renderable {
 
 /// Player and Enemies
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone, ConvertSaveload)]
 pub struct Viewshed {
     pub visible_tiles: Vec<Point>,
     pub range: i32,
     pub dirty: bool,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Serialize, Deserialize, Clone, Copy)]
 pub struct Monster;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone)]
 pub struct Name {
     pub name: String,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Serialize, Deserialize, Clone, Copy)]
 pub struct BlockedTile;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct CombatStats {
     pub max_hp: i32,
     pub hp: i32,
@@ -96,18 +96,18 @@ impl SufferDamage {
 
 /// Items and Inventory
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone, Copy, Serialize, Deserialize)]
 pub struct Item;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct ProvidesHealing {
     pub heal_amount: i32,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Serialize, Deserialize, Clone, Copy)]
 pub struct Consumable;
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct InBackpack {
     pub owner: Entity,
 }
@@ -128,22 +128,25 @@ pub struct WantsToDropItem {
     pub item: Entity,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct Ranged {
     pub range: i32,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct InflictsDamage {
     pub damage: i32,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, ConvertSaveload, Clone, Copy)]
 pub struct AreaOfEffect {
     pub radius: i32,
 }
 
-#[derive(Debug, Component, Clone, Copy)]
+#[derive(Debug, Component, Clone, Copy, ConvertSaveload)]
 pub struct Confusion {
     pub turns: i32,
 }
+
+#[derive(Debug)]
+pub struct FilePersistent;

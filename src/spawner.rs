@@ -1,10 +1,14 @@
 use rltk::prelude::*;
-use specs::prelude::*;
+use specs::{
+    prelude::*,
+    saveload::{MarkedBuilder, SimpleMarker},
+};
 
 use crate::{
     components::{
-        AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, InBackpack, InflictsDamage,
-        Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable, Viewshed,
+        AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, FilePersistent,
+        InflictsDamage, Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable,
+        Viewshed,
     },
     map::Rect,
     player::Player,
@@ -35,46 +39,47 @@ pub fn spawn_player(ecs: &mut World, position: Position) -> Entity {
         .with(Name {
             name: "Player".to_string(),
         })
+        .marked::<SimpleMarker<FilePersistent>>()
         .build();
 
     // spawn player with a simple potion
     // can we make this a potion that refreshes
     // after some ammount of time/turns?
-    ecs.create_entity()
-        .with(InBackpack {
-            owner: player_entity,
-        })
-        .with(Renderable {
-            glyph: rltk::to_cp437('¡'),
-            fg: RGB::named(MAGENTA),
-            bg: RGB::named(BLACK),
-            render_order: 2,
-        })
-        .with(Item)
-        .with(Consumable)
-        .with(ProvidesHealing { heal_amount: 4 })
-        .with(Name {
-            name: "Health Potion".to_string(),
-        })
-        .build();
+    // ecs.create_entity()
+    //     .with(InBackpack {
+    //         owner: player_entity,
+    //     })
+    //     .with(Renderable {
+    //         glyph: rltk::to_cp437('¡'),
+    //         fg: RGB::named(MAGENTA),
+    //         bg: RGB::named(BLACK),
+    //         render_order: 2,
+    //     })
+    //     .with(Item)
+    //     .with(Consumable)
+    //     .with(ProvidesHealing { heal_amount: 4 })
+    //     .with(Name {
+    //         name: "Health Potion".to_string(),
+    //     })
+    //     .build();
 
-    magic_missile_scroll_builder(ecs)
-        .with(InBackpack {
-            owner: player_entity,
-        })
-        .build();
-    fireball_scroll_builder(ecs)
-        .with(InBackpack {
-            owner: player_entity,
-        })
-        .build();
+    // magic_missile_scroll_builder(ecs)
+    //     .with(InBackpack {
+    //         owner: player_entity,
+    //     })
+    //     .build();
+    // fireball_scroll_builder(ecs)
+    //     .with(InBackpack {
+    //         owner: player_entity,
+    //     })
+    //     .build();
 
-    fireball_scroll_builder(ecs).with(position).build();
-    confusion_scroll_builder(ecs)
-        .with(InBackpack {
-            owner: player_entity,
-        })
-        .build();
+    // fireball_scroll_builder(ecs).with(position).build();
+    // confusion_scroll_builder(ecs)
+    //     .with(InBackpack {
+    //         owner: player_entity,
+    //     })
+    //     .build();
     player_entity
 }
 
@@ -137,6 +142,7 @@ fn spawn_enemy(ecs: &mut World, position: Position, enemy_type: &EnemyType) -> E
             defense: 1,
             power: 4,
         })
+        .marked::<SimpleMarker<FilePersistent>>()
         .build()
 }
 
@@ -254,6 +260,7 @@ fn healing_potion_builder(ecs: &mut World) -> EntityBuilder {
         .with(Name {
             name: "Health Potion".to_string(),
         })
+        .marked::<SimpleMarker<FilePersistent>>()
 }
 
 /// Return an `EntityBuilder` with components to describe a magic missle scroll
@@ -275,6 +282,7 @@ fn magic_missile_scroll_builder(ecs: &mut World) -> EntityBuilder {
         .with(Consumable)
         .with(Ranged { range: 6 })
         .with(InflictsDamage { damage: 8 })
+        .marked::<SimpleMarker<FilePersistent>>()
 }
 
 /// Return an `EntityBuilder` with components to describe a fireball scroll
@@ -297,6 +305,7 @@ fn fireball_scroll_builder(ecs: &mut World) -> EntityBuilder {
         .with(Ranged { range: 6 })
         .with(InflictsDamage { damage: 20 })
         .with(AreaOfEffect { radius: 3 })
+        .marked::<SimpleMarker<FilePersistent>>()
 }
 
 /// Return an `EntityBuilder` with components to describe a confussion scroll
@@ -318,4 +327,5 @@ fn confusion_scroll_builder(ecs: &mut World) -> EntityBuilder {
         .with(Consumable)
         .with(Ranged { range: 6 })
         .with(Confusion { turns: 4 })
+        .marked::<SimpleMarker<FilePersistent>>()
 }

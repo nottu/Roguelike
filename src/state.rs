@@ -9,6 +9,7 @@ use crate::{
     inventory_system::{ItemCollectionSystem, ItemDropSystem, ItemUseSystem},
     map::{self, Map},
     player::{self, fetch_player_entity, Player},
+    save_load_systems::{load_game, save_game},
     systems::{DamageSystem, MeleeCombatSystem, MonsterAI, VisibilitySystem},
 };
 use rltk::prelude::*;
@@ -74,13 +75,11 @@ impl State {
             let mut system = map::PositionUpdateSystem;
             system.run_now(&self.ecs);
         }
-        //dbg!(self.ecs.read_storage::<Player>().count());
         self.ecs.maintain();
-        //dbg!(self.ecs.read_storage::<Player>().count());
     }
 
     fn remove_dead(&mut self) {
-        let dead: Vec<(Entity, (i32, i32))> = {
+        let get_dead = || {
             let combat_stats = self.ecs.read_storage::<CombatStats>();
             let entities = self.ecs.entities();
             let positions = self.ecs.read_storage::<Position>();
@@ -110,14 +109,16 @@ impl State {
                 })
                 .collect()
         };
+        let dead: Vec<(Entity, (i32, i32))> = get_dead();
 
+        // remove dead entities
         for (victim, _position) in &dead {
-            // println!("Removing dead entity");
             self.ecs
                 .delete_entity(*victim)
                 .expect("Unable to delete dead entity");
         }
 
+        // remove blockers from map
         let mut map = self.ecs.fetch_mut::<Map>();
         for (_victim, (x, y)) in dead {
             let idx = map.xy_idx(x, y);
@@ -217,10 +218,11 @@ impl State {
                         RunState::PlayerTurn
                     }
                 }
-            } // RunState::MainMenu => {
-              //     *self.ecs.fetch_mut::<AppState>() = AppState::new_main_menu();
-              //     RunState::PreRun
-              // }
+            }
+            RunState::ShowMenu => {
+                *self.ecs.fetch_mut::<AppState>() = AppState::new_pause_menu();
+                RunState::PreRun
+            }
         }
     }
 }
@@ -237,12 +239,17 @@ impl GameState for State {
                 // draw menu or something...
                 if let Some(selection) = gui::draw_main_menu(&mut items, &mut self.ecs, ctx) {
                     match selection {
-                        gui::MainMenuOption::NewGame => {
+                        gui::MainMenuOption::New | gui::MainMenuOption::Continue => {
                             // do something first?
                             *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
                         }
                         gui::MainMenuOption::Quit => ctx.quit(),
-                        gui::MainMenuOption::LoadGame => unimplemented!(),
+                        gui::MainMenuOption::Load => {
+                            *self.ecs.fetch_mut::<AppState>() = AppState::Loading;
+                        }
+                        gui::MainMenuOption::Save => {
+                            *self.ecs.fetch_mut::<AppState>() = AppState::Saving;
+                        }
                     }
                 } else {
                     *self.ecs.fetch_mut::<AppState>() = AppState::MainMenu { items };
@@ -256,6 +263,14 @@ impl GameState for State {
                 *self.ecs.fetch_mut::<RunState>() = self.next_game_state(ctx);
 
                 draw_ui(&self.ecs, ctx);
+            }
+            AppState::Saving => {
+                save_game(&mut self.ecs);
+                *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
+            }
+            AppState::Loading => {
+                load_game(&mut self.ecs);
+                *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
             }
         };
         self.render_debug_info(ctx);
@@ -272,7 +287,7 @@ pub enum RunState {
     ShowInventory,
     ShowDropItem,
     ShowTargeting { range: i32, item: Entity },
-    // MainMenu,
+    ShowMenu,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -280,14 +295,22 @@ pub enum RunState {
 pub enum AppState {
     MainMenu { items: Vec<MainMenuItem> },
     InGame,
+    Saving,
+    Loading,
 }
 
 impl AppState {
     fn new_main_menu() -> Self {
         Self::MainMenu {
+            items: vec![MainMenuItem::NEW, MainMenuItem::LOAD, MainMenuItem::QUIT],
+        }
+    }
+    fn new_pause_menu() -> Self {
+        Self::MainMenu {
             items: vec![
-                MainMenuItem::NEW_GAME,
-                MainMenuItem::LOAD_GAME,
+                MainMenuItem::CONTINUE,
+                MainMenuItem::SAVE,
+                MainMenuItem::LOAD,
                 MainMenuItem::QUIT,
             ],
         }

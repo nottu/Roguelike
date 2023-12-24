@@ -1,4 +1,5 @@
 use rltk::prelude::*;
+use serde_derive::{Deserialize, Serialize};
 use specs::prelude::*;
 use specs_derive::Component;
 
@@ -9,7 +10,7 @@ use crate::{
     state::{RunState, State},
 };
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Clone, Serialize, Deserialize)]
 pub struct Player;
 
 fn move_player(delta_x: i32, delta_y: i32, ecs: &World) {
@@ -101,6 +102,7 @@ pub fn input(gs: &State, ctx: &Rltk) -> RunState {
         rltk::VirtualKeyCode::G => get_item(&gs.ecs),
         rltk::VirtualKeyCode::I => return RunState::ShowInventory,
         rltk::VirtualKeyCode::D => return RunState::ShowDropItem,
+        rltk::VirtualKeyCode::Escape => return RunState::ShowMenu,
         _ => return RunState::AwaitingInput,
     };
     RunState::PlayerTurn

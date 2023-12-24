@@ -37,7 +37,8 @@ impl<'a> System<'a> for ItemCollectionSystem {
         ) = data;
 
         let Some((player_entity, _player)) = (&entities, &players).join().next() else {
-            panic!("Failed to find Player entity!");
+            eprintln!("Failed to find Player entity!");
+            return;
         };
 
         for (picking_entity, pickup) in (&entities, &wants_to_pickup).join() {
@@ -105,7 +106,8 @@ impl<'a> System<'a> for ItemUseSystem {
         let Some((player_entity, _player, _player_position)) =
             (&entities, &players, &positions).join().next()
         else {
-            panic!("Failed to find Player entity!");
+            eprintln!("Failed to find Player entity!");
+            return;
         };
         for (entity, use_item) in (&entities, &wants_to_use).join() {
             let affected_entities =
@@ -318,7 +320,8 @@ impl<'a> System<'a> for ItemDropSystem {
             data;
 
         let Some((player_entity, _player)) = (&entities, &players).join().next() else {
-            panic!("Failed to find Player entity!");
+            eprintln!("Failed to find Player entity!");
+            return;
         };
         for (entity, to_drop) in (&entities, &wants_drop).join() {
             // println!("Droping something");

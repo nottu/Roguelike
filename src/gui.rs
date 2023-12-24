@@ -293,16 +293,20 @@ pub fn ranged_target(ecs: &mut World, ctx: &mut Rltk, range: i32) -> ItemMenuRes
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MainMenuOption {
-    NewGame,
-    LoadGame,
+    New,
+    Load,
+    Continue,
+    Save,
     Quit,
 }
 
 impl MainMenuOption {
     const fn as_str(self) -> &'static str {
         match self {
-            Self::NewGame => "New Game",
-            Self::LoadGame => "Load Game",
+            Self::New => "New Game",
+            Self::Load => "Load Game",
+            Self::Save => "Save Game",
+            Self::Continue => "Continue",
             Self::Quit => "Quit",
         }
     }
@@ -315,20 +319,30 @@ pub struct MainMenuItem {
 }
 
 impl MainMenuItem {
-    pub const NEW_GAME: Self = Self {
-        item: MainMenuOption::NewGame,
+    pub const NEW: Self = Self {
+        item: MainMenuOption::New,
         hovered: false,
     };
-    pub const LOAD_GAME: Self = Self {
-        item: MainMenuOption::LoadGame,
+    pub const LOAD: Self = Self {
+        item: MainMenuOption::Load,
         hovered: false,
     };
     pub const QUIT: Self = Self {
         item: MainMenuOption::Quit,
         hovered: false,
     };
+    pub const SAVE: Self = Self {
+        item: MainMenuOption::Save,
+        hovered: false,
+    };
+    pub const CONTINUE: Self = Self {
+        item: MainMenuOption::Continue,
+        hovered: false,
+    };
 }
 
+// todo: on LoadGame, draw menu to select saved game
+// on save game... draw manu to select save slot?
 pub fn draw_main_menu(
     menu_items: &mut [MainMenuItem],
     _ecs: &mut World,
@@ -340,12 +354,16 @@ pub fn draw_main_menu(
         RGB::named(BLACK),
         "Rust Roguelike Tutorial",
     );
-    let mut selection_idx: usize = 0;
+    let mut selection_idx = menu_items
+        .iter()
+        .enumerate()
+        .find(|(_idx, menu_item)| menu_item.hovered)
+        .map_or(0, |(idx, _item)| idx);
+    menu_items[selection_idx].hovered = true;
     for (idx, menu_item) in menu_items.iter().enumerate() {
         ctx.print_color_centered(
             24 + 2 * idx,
             if menu_item.hovered {
-                selection_idx = idx;
                 RGB::named(MAGENTA)
             } else {
                 RGB::named(WHITE)

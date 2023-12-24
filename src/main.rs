@@ -3,21 +3,25 @@
 use gui::GameLog;
 use player::Player;
 use rltk::prelude::*;
-use specs::prelude::*;
+use specs::{
+    prelude::*,
+    saveload::{SimpleMarker, SimpleMarkerAllocator},
+};
 
 mod components;
 mod gui;
 mod inventory_system;
 mod map;
 mod player;
+mod save_load_systems;
 mod spawner;
 mod state;
 mod systems;
 
 use components::{
-    AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, InBackpack, InflictsDamage,
-    Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable, SufferDamage, Viewshed,
-    WantsToDropItem, WantsToMelee, WantsToPickUp, WantsToUseItem,
+    AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, FilePersistent, InBackpack,
+    InflictsDamage, Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable,
+    SufferDamage, Viewshed, WantsToDropItem, WantsToMelee, WantsToPickUp, WantsToUseItem,
 };
 use map::Map;
 use spawner::{spawn_player, spawn_room};
@@ -86,4 +90,8 @@ fn register_components(ecs: &mut World) {
     ecs.register::<WantsToPickUp>();
     ecs.register::<WantsToUseItem>();
     ecs.register::<WantsToDropItem>();
+
+    ecs.register::<SimpleMarker<FilePersistent>>();
+    ecs.insert(SimpleMarkerAllocator::<FilePersistent>::default());
+    ecs.register::<save_load_systems::SerializationHelper>();
 }

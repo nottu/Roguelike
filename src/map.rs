@@ -1,4 +1,5 @@
 use rltk::prelude::*;
+use serde_derive::{Deserialize, Serialize};
 use specs::prelude::*;
 use std::cmp::{max, min};
 
@@ -8,7 +9,7 @@ pub const MAP_WIDTH: usize = 80;
 pub const MAP_HEIGHT: usize = 43;
 pub const MAP_SIZE: usize = MAP_WIDTH * MAP_HEIGHT;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TileType {
     Wall,
     Floor,
@@ -33,7 +34,7 @@ impl TileType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Rect {
     pub x1: i32,
     pub x2: i32,
@@ -68,6 +69,7 @@ impl Rect {
     }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Map {
     pub tiles: Vec<TileType>,
     pub rooms: Vec<Rect>,
@@ -76,6 +78,8 @@ pub struct Map {
     pub revealed_tiles: Vec<bool>,
     pub visible_tiles: Vec<bool>,
     pub blocked: Vec<bool>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     pub tile_content: Vec<Vec<Entity>>,
 }
 
