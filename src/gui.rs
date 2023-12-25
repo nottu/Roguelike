@@ -20,17 +20,28 @@ impl GameLog {
     }
 }
 
+// todo: make more ECS-y...
+// all functions can be part of a system use AppState to determine which
+// systems get to run
+
+// todo: fix hardcoded `x`, `y` values
 pub fn draw_ui(ecs: &World, ctx: &mut Rltk) {
     ctx.draw_box(0, 43, 79, 6, RGB::named(WHITE), RGB::named(BLACK));
 
     let combat_stats = ecs.read_storage::<CombatStats>();
     let players = ecs.read_storage::<Player>();
+    let map = ecs.fetch::<Map>();
 
     if let Some((_player, stats)) = (&players, &combat_stats).join().next() {
         draw_player_stats(stats, ctx);
     }
     if let Some(logs) = ecs.try_fetch::<GameLog>() {
         draw_logs(&logs.entries, ctx);
+    }
+
+    {
+        let depth = format!("Depth: {}", map.depth);
+        ctx.print_color(2, 43, RGB::named(YELLOW), RGB::named(BLACK), depth);
     }
 
     // draw mouse
@@ -168,7 +179,7 @@ fn show_inventory_menu(
 
     let inventory: Vec<(&str, Entity)> = (&backpack, &names, &entities)
         .join()
-        .filter(|(bk, _name, _item_entity)| bk.owner == player_entity)
+        .filter(|&(bk, _name, _item_entity)| bk.owner == player_entity)
         .map(|(_bk, name, item_entity)| (name.name.as_str(), item_entity))
         .collect();
 
@@ -343,11 +354,7 @@ impl MainMenuItem {
 
 // todo: on LoadGame, draw menu to select saved game
 // on save game... draw manu to select save slot?
-pub fn draw_main_menu(
-    menu_items: &mut [MainMenuItem],
-    _ecs: &mut World,
-    ctx: &mut Rltk,
-) -> Option<MainMenuOption> {
+pub fn draw_main_menu(menu_items: &mut [MainMenuItem], ctx: &mut Rltk) -> Option<MainMenuOption> {
     ctx.print_color_centered(
         15,
         RGB::named(YELLOW),

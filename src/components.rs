@@ -148,5 +148,8 @@ pub struct Confusion {
     pub turns: i32,
 }
 
+#[derive(Debug, Component, Clone, Copy)]
+pub struct ToDelete;
+
 #[derive(Debug)]
 pub struct FilePersistent;

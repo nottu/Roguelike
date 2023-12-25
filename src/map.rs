@@ -13,6 +13,7 @@ pub const MAP_SIZE: usize = MAP_WIDTH * MAP_HEIGHT;
 pub enum TileType {
     Wall,
     Floor,
+    Stairs,
 }
 
 impl TileType {
@@ -20,6 +21,7 @@ impl TileType {
         match self {
             Self::Floor => RGB::from_f32(0.0, 0.5, 0.5),
             Self::Wall => RGB::from_f32(0.0, 1.0, 0.0),
+            Self::Stairs => RGB::from_f32(0.0, 1.0, 1.0),
         }
     }
     #[allow(clippy::unused_self)]
@@ -30,6 +32,7 @@ impl TileType {
         match self {
             Self::Floor => rltk::to_cp437('.'),
             Self::Wall => rltk::to_cp437('#'),
+            Self::Stairs => rltk::to_cp437('>'),
         }
     }
 }
@@ -56,6 +59,7 @@ impl Rect {
         self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
     }
 
+    /// Returns tuple of `(x, y)` values
     pub const fn center(&self) -> (i32, i32) {
         ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
     }
@@ -78,11 +82,13 @@ pub struct Map {
     pub revealed_tiles: Vec<bool>,
     pub visible_tiles: Vec<bool>,
     pub blocked: Vec<bool>,
+    pub depth: i32,
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     pub tile_content: Vec<Vec<Entity>>,
 }
 
+// todo: make map indexable by tuple (x, y)
 impl Map {
     pub fn draw(&self, ctx: &mut Rltk) {
         let mut y = 0;
@@ -109,7 +115,7 @@ impl Map {
         (y * self.width + x) as usize
     }
 
-    pub fn new_map_rooms_and_corridors(rng: &mut RandomNumberGenerator) -> Self {
+    pub fn new_map_rooms_and_corridors(rng: &mut RandomNumberGenerator, new_depth: i32) -> Self {
         const MAX_ROOMS: i32 = 30;
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let mut map = Self {
@@ -120,6 +126,7 @@ impl Map {
             revealed_tiles: vec![false; MAP_SIZE],
             visible_tiles: vec![false; MAP_SIZE],
             blocked: vec![false; MAP_SIZE],
+            depth: new_depth,
             tile_content: vec![vec![]; MAP_SIZE],
         };
 
@@ -153,6 +160,13 @@ impl Map {
         // mark walls as blocked
         map.populate_blocked();
 
+        // insert stairs
+        {
+            let (stairs_pos_x, stairs_pos_y) =
+                map.rooms.last().expect("No rooms generated").center();
+            let stairs_map_idx = map.xy_idx(stairs_pos_x, stairs_pos_y);
+            map.tiles[stairs_map_idx] = TileType::Stairs
+        }
         map
     }
 

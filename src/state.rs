@@ -1,6 +1,8 @@
 use crate::{
+    clean_up_systems::CleanUpSystem,
     components::{
-        CombatStats, Name, Position, Ranged, Renderable, WantsToDropItem, WantsToUseItem,
+        CombatStats, InBackpack, Name, Position, Ranged, Renderable, ToDelete, Viewshed,
+        WantsToDropItem, WantsToUseItem,
     },
     gui::{
         self, draw_ui, drop_item_menu, ranged_target, show_inventory, GameLog, ItemMenuResult,
@@ -9,7 +11,8 @@ use crate::{
     inventory_system::{ItemCollectionSystem, ItemDropSystem, ItemUseSystem},
     map::{self, Map},
     player::{self, fetch_player_entity, Player},
-    save_load_systems::{load_game, save_game},
+    save_load_systems::{delete_save, load_game, save_game},
+    spawner,
     systems::{DamageSystem, MeleeCombatSystem, MonsterAI, VisibilitySystem},
 };
 use rltk::prelude::*;
@@ -20,7 +23,19 @@ pub struct State {
 }
 
 impl State {
+    pub fn new() -> Self {
+        let mut ecs = World::new();
+        ecs.insert(RunState::PreRun);
+        ecs.insert(AppState::new_main_menu());
+        Self { ecs }
+    }
+
     fn run_systems(&mut self) {
+        // remove marked entities
+        {
+            let mut clean_up_system = CleanUpSystem;
+            clean_up_system.run_now(&self.ecs);
+        }
         // visibility system
         {
             let mut system = VisibilitySystem;
@@ -126,13 +141,6 @@ impl State {
         }
     }
 
-    pub fn new() -> Self {
-        let mut ecs = World::new();
-        ecs.insert(RunState::PreRun);
-        ecs.insert(AppState::new_main_menu());
-        Self { ecs }
-    }
-
     fn render_map(&mut self, ctx: &mut Rltk) {
         let map = self.ecs.fetch::<Map>();
 
@@ -148,14 +156,18 @@ impl State {
             }
         }
     }
+
     fn render_debug_info(&mut self, ctx: &mut Rltk) {
         let runstate = *self.ecs.fetch::<RunState>();
         ctx.print(1, 1, &format!("FPS: {}", ctx.fps));
         ctx.print(1, 2, &format!("RunState: {runstate:?}"));
     }
+
+    // state machine logic...
     fn next_game_state(&mut self, ctx: &mut Rltk) -> RunState {
         let runstate = *self.ecs.fetch::<RunState>();
         match runstate {
+            // todo: `PreRun` state should init map & player
             RunState::MonsterTurn | RunState::PreRun => {
                 self.run_systems();
                 RunState::AwaitingInput
@@ -223,7 +235,82 @@ impl State {
                 *self.ecs.fetch_mut::<AppState>() = AppState::new_pause_menu();
                 RunState::PreRun
             }
+            RunState::NextLevel => {
+                self.ecs
+                    .fetch_mut::<GameLog>()
+                    .log("Loading Next Level".to_string());
+                self.mark_entities_to_remove_on_level_change();
+                self.load_new_level();
+                RunState::PreRun
+            }
         }
+    }
+
+    // level change logic
+    fn mark_entities_to_remove_on_level_change(&mut self) {
+        let entities = self.ecs.entities();
+        let backpack = self.ecs.read_storage::<InBackpack>();
+        let player = player::fetch_player_entity(&self.ecs);
+        let mut positions = self.ecs.write_storage::<Position>();
+        let mut to_delete = self.ecs.write_storage::<ToDelete>();
+
+        entities
+            .join()
+            .filter(|&entity| {
+                let in_player_backpack = backpack
+                    .get(entity)
+                    .map(|bp| bp.owner == player)
+                    .unwrap_or_default();
+                !(entity == player || in_player_backpack)
+            })
+            .for_each(|to_delete_entity| {
+                to_delete
+                    .insert(to_delete_entity, ToDelete)
+                    .expect("Failed marking entity to delete");
+                positions.remove(to_delete_entity);
+            });
+    }
+
+    fn load_new_level(&mut self) {
+        let curr_depth = self.ecs.read_resource::<Map>().depth;
+        let new_map = self
+            .spawn_map_with_enemies(curr_depth + 1)
+            .expect("Failed to load new level");
+        *self.ecs.write_resource::<Map>() = new_map;
+    }
+    // todo: find a better place for this
+    pub fn spawn_map_with_enemies(&mut self, depth: i32) -> Result<Map, String> {
+        let map = {
+            let mut rng = self.ecs.fetch_mut::<RandomNumberGenerator>();
+            Map::new_map_rooms_and_corridors(&mut rng, depth)
+        };
+
+        // should Player positioning be done as part of the pre-run state?
+        if let Some((x, y)) = map.rooms.first().map(map::Rect::center) {
+            self.ecs
+                .fetch_mut::<GameLog>()
+                .log(format!("You descend to level {depth}"));
+            let mut positions = self.ecs.write_storage::<Position>();
+            let player = self.ecs.read_storage::<Player>();
+            let mut view_shed = self.ecs.write_storage::<Viewshed>();
+            let mut stats = self.ecs.write_storage::<CombatStats>();
+            (&player, &mut positions, &mut view_shed, &mut stats)
+                .join()
+                .for_each(|(_player, position, view_shed, stats)| {
+                    //only one player
+                    position.x = x;
+                    position.y = y;
+                    view_shed.dirty = true;
+                    stats.hp = stats.hp.max(stats.max_hp / 2);
+                });
+        } else {
+            return Err("NO FIRST ROOM".into());
+        };
+
+        for room in map.rooms.iter().skip(1) {
+            spawner::spawn_room(&mut self.ecs, room);
+        }
+        Ok(map)
     }
 }
 
@@ -233,26 +320,22 @@ impl GameState for State {
         ctx.cls();
         // probably not very efficient..
         // need to find a better way that does not require a clone!
-        let app_state = (*self.ecs.fetch::<AppState>()).clone();
-        match app_state {
+        let prev_state = (*self.ecs.fetch::<AppState>()).clone();
+        *self.ecs.fetch_mut::<AppState>() = match prev_state {
             AppState::MainMenu { mut items } => {
                 // draw menu or something...
-                if let Some(selection) = gui::draw_main_menu(&mut items, &mut self.ecs, ctx) {
+                if let Some(selection) = gui::draw_main_menu(&mut items, ctx) {
                     match selection {
                         gui::MainMenuOption::New | gui::MainMenuOption::Continue => {
                             // do something first?
-                            *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
+                            AppState::InGame
                         }
-                        gui::MainMenuOption::Quit => ctx.quit(),
-                        gui::MainMenuOption::Load => {
-                            *self.ecs.fetch_mut::<AppState>() = AppState::Loading;
-                        }
-                        gui::MainMenuOption::Save => {
-                            *self.ecs.fetch_mut::<AppState>() = AppState::Saving;
-                        }
+                        gui::MainMenuOption::Quit => AppState::Quit,
+                        gui::MainMenuOption::Load => AppState::Loading,
+                        gui::MainMenuOption::Save => AppState::Saving,
                     }
                 } else {
-                    *self.ecs.fetch_mut::<AppState>() = AppState::MainMenu { items };
+                    AppState::MainMenu { items }
                 }
             }
             AppState::InGame => {
@@ -263,14 +346,20 @@ impl GameState for State {
                 *self.ecs.fetch_mut::<RunState>() = self.next_game_state(ctx);
 
                 draw_ui(&self.ecs, ctx);
+                AppState::InGame
             }
             AppState::Saving => {
                 save_game(&mut self.ecs);
-                *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
+                AppState::InGame
             }
             AppState::Loading => {
                 load_game(&mut self.ecs);
-                *self.ecs.fetch_mut::<AppState>() = AppState::InGame;
+                let _deleted = delete_save();
+                AppState::InGame
+            }
+            AppState::Quit => {
+                ctx.quit();
+                AppState::Quit
             }
         };
         self.render_debug_info(ctx);
@@ -288,6 +377,7 @@ pub enum RunState {
     ShowDropItem,
     ShowTargeting { range: i32, item: Entity },
     ShowMenu,
+    NextLevel,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -297,6 +387,7 @@ pub enum AppState {
     InGame,
     Saving,
     Loading,
+    Quit,
 }
 
 impl AppState {

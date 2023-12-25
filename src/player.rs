@@ -6,14 +6,14 @@ use specs_derive::Component;
 use crate::{
     components::{CombatStats, Item, Name, Position, Viewshed, WantsToMelee, WantsToPickUp},
     gui::GameLog,
-    map::Map,
+    map::{Map, TileType},
     state::{RunState, State},
 };
 
 #[derive(Debug, Component, Clone, Serialize, Deserialize)]
 pub struct Player;
 
-fn move_player(delta_x: i32, delta_y: i32, ecs: &World) {
+fn move_player(delta_x: i32, delta_y: i32, ecs: &World) -> RunState {
     let mut positions = ecs.write_storage::<Position>();
     let players = ecs.read_storage::<Player>();
     let entities = ecs.entities();
@@ -52,9 +52,10 @@ fn move_player(delta_x: i32, delta_y: i32, ecs: &World) {
             viewshed.dirty = true;
         }
     }
+    RunState::PlayerTurn
 }
 
-fn get_item(ecs: &World) {
+fn get_item(ecs: &World) -> RunState {
     let players = ecs.read_storage::<Player>();
     let positions = ecs.read_storage::<Position>();
     let entities = ecs.entities();
@@ -66,7 +67,7 @@ fn get_item(ecs: &World) {
         (&players, &entities, &positions).join().next()
     else {
         console::log("unable to fetch player");
-        return;
+        return RunState::AwaitingInput;
     };
 
     let target_item = (&entities, &items, &positions, &names)
@@ -78,13 +79,17 @@ fn get_item(ecs: &World) {
         .next();
 
     match target_item {
-        None => game_log.log("There is nothing to pick up".to_string()),
+        None => {
+            game_log.log("There is nothing to pick up".to_string());
+            RunState::AwaitingInput
+        }
         Some((item_entity, item_name)) => {
             let mut pickup = ecs.write_storage::<WantsToPickUp>();
             pickup
                 .insert(player_entity, WantsToPickUp { item: item_entity })
                 .expect("Failed to write to WantsToPickUp");
             game_log.log(format!("WantsToPickUp {item_name}"));
+            RunState::PlayerTurn
         }
     }
 }
@@ -94,18 +99,18 @@ pub fn input(gs: &State, ctx: &Rltk) -> RunState {
         return RunState::AwaitingInput;
     };
 
-    match pressed_key {
+    match dbg!(pressed_key) {
         rltk::VirtualKeyCode::Left => move_player(-1, 0, &gs.ecs),
         rltk::VirtualKeyCode::Right => move_player(1, 0, &gs.ecs),
         rltk::VirtualKeyCode::Up => move_player(0, -1, &gs.ecs),
         rltk::VirtualKeyCode::Down => move_player(0, 1, &gs.ecs),
         rltk::VirtualKeyCode::G => get_item(&gs.ecs),
-        rltk::VirtualKeyCode::I => return RunState::ShowInventory,
-        rltk::VirtualKeyCode::D => return RunState::ShowDropItem,
-        rltk::VirtualKeyCode::Escape => return RunState::ShowMenu,
-        _ => return RunState::AwaitingInput,
-    };
-    RunState::PlayerTurn
+        rltk::VirtualKeyCode::I => RunState::ShowInventory,
+        rltk::VirtualKeyCode::D => RunState::ShowDropItem,
+        rltk::VirtualKeyCode::Escape => RunState::ShowMenu,
+        rltk::VirtualKeyCode::Period => try_use_stairs(&gs.ecs),
+        _key => RunState::AwaitingInput
+    }
 }
 
 pub fn fetch_player_entity(ecs: &World) -> Entity {
@@ -117,4 +122,22 @@ pub fn fetch_player_entity(ecs: &World) -> Entity {
         .map(|(entity, _p)| entity)
         .next()
         .unwrap()
+}
+
+fn try_use_stairs(ecs: &World) -> RunState {
+    let player = ecs.read_storage::<Player>();
+    let positions = ecs.read_storage::<Position>();
+    let Some((_p, position)) = (&player, &positions).join().next() else {
+        eprintln!("NO PLAYER FOUND");
+        return RunState::AwaitingInput;
+    };
+    let map = ecs.fetch::<Map>();
+    let player_map_idx = map.xy_idx(position.x, position.y);
+    if map.tiles[player_map_idx] == TileType::Stairs {
+        RunState::NextLevel
+    } else {
+        ecs.fetch_mut::<GameLog>()
+        .log("No stairs at position".to_string());
+        RunState::AwaitingInput
+    }
 }

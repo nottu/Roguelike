@@ -8,6 +8,7 @@ use specs::{
     saveload::{SimpleMarker, SimpleMarkerAllocator},
 };
 
+mod clean_up_systems;
 mod components;
 mod gui;
 mod inventory_system;
@@ -21,10 +22,9 @@ mod systems;
 use components::{
     AreaOfEffect, BlockedTile, CombatStats, Confusion, Consumable, FilePersistent, InBackpack,
     InflictsDamage, Item, Monster, Name, Position, ProvidesHealing, Ranged, Renderable,
-    SufferDamage, Viewshed, WantsToDropItem, WantsToMelee, WantsToPickUp, WantsToUseItem,
+    SufferDamage, ToDelete, Viewshed, WantsToDropItem, WantsToMelee, WantsToPickUp, WantsToUseItem,
 };
-use map::Map;
-use spawner::{spawn_player, spawn_room};
+use spawner::spawn_player;
 use state::State;
 
 fn main() -> BError {
@@ -38,29 +38,21 @@ fn main() -> BError {
 
     let mut gs = State::new();
     register_components(&mut gs.ecs);
-
-    let mut rng = RandomNumberGenerator::new();
-    let map = Map::new_map_rooms_and_corridors(&mut rng);
-    gs.ecs.insert(rng);
-
-    let Some((x, y)) = map.rooms.first().map(map::Rect::center) else {
-        return Err("NO FIRST ROOM".into());
-    };
-    // Create and keep track of player entity
-    let player_entity = spawn_player(&mut gs.ecs, Position { x, y });
-    gs.ecs.insert(player_entity);
-
-    for room in map.rooms.iter().skip(1) {
-        spawn_room(&mut gs.ecs, room);
-    }
-
-    gs.ecs.insert(map);
-
     // Insert GameLog
     let mut game_log = GameLog::new();
     game_log.log("Welcome to Rusty Roguelike".to_string());
     gs.ecs.insert(game_log);
-    //
+
+    // put player in any position, it will get set on map creation
+    let player_entity = spawn_player(&mut gs.ecs, Position { x: 0, y: 0 });
+    gs.ecs.insert(player_entity);
+    let rng = RandomNumberGenerator::new();
+    gs.ecs.insert(rng);
+
+    let map = gs
+        .spawn_map_with_enemies(1)
+        .expect("Failed building initial map");
+    gs.ecs.insert(map);
 
     main_loop(context, gs)
 }
@@ -94,4 +86,6 @@ fn register_components(ecs: &mut World) {
     ecs.register::<SimpleMarker<FilePersistent>>();
     ecs.insert(SimpleMarkerAllocator::<FilePersistent>::default());
     ecs.register::<save_load_systems::SerializationHelper>();
+
+    ecs.register::<ToDelete>();
 }
