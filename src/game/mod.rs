@@ -1,8 +1,11 @@
 use bevy::prelude::*;
+use bevy_ecs_tilemap::prelude::*;
 
-use crate::game::{assets::AssetsPlugin, player::PlayerPlugin};
+use crate::game::{assets::AssetsPlugin, map::MapPlugin, player::PlayerPlugin};
 
+pub use bevy_ecs_tilemap::prelude::TilePos;
 pub mod assets;
+pub mod map;
 pub mod player;
 
 const ANIM_FPS: f32 = 6.0;
@@ -13,10 +16,12 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.init_state::<GameState>()
-            .add_plugins((AssetsPlugin, PlayerPlugin))
+            .add_plugins((AssetsPlugin, MapPlugin, PlayerPlugin))
             .add_systems(
                 Update,
-                (sync_transforms, animate_sprites).run_if(in_state(GameState::InGame)),
+                (sync_transforms, sync_facing, animate_sprites)
+                    .chain()
+                    .run_if(in_state(GameState::InGame)),
             );
     }
 }
@@ -28,10 +33,11 @@ pub enum GameState {
     InGame,
 }
 
-#[derive(Debug, Component)]
-pub struct Position {
-    pub x: i32,
-    pub y: i32,
+#[derive(Debug, Component, PartialEq, Eq, Default)]
+pub enum FacingDir {
+    #[default]
+    Right,
+    Left,
 }
 
 #[derive(Component)]
@@ -51,10 +57,35 @@ impl SpriteAnimation {
     }
 }
 
-fn sync_transforms(mut query: Query<(&Position, &mut Transform), Changed<Position>>) {
-    for (pos, mut transform) in &mut query {
-        transform.translation.x = pos.x as f32 * TILE_SIZE;
-        transform.translation.y = pos.y as f32 * TILE_SIZE;
+fn sync_facing(mut query: Query<(&FacingDir, &mut Sprite), Changed<FacingDir>>) {
+    for (facing, mut sprite) in &mut query {
+        sprite.flip_x = *facing == FacingDir::Left;
+    }
+}
+
+fn sync_transforms(
+    mut query: Query<(&TilePos, &mut Transform), Or<(Changed<TilePos>, Added<TilePos>)>>,
+    tilemap_q: Query<(
+        &TilemapSize,
+        &TilemapGridSize,
+        &TilemapTileSize,
+        &TilemapType,
+        &TilemapAnchor,
+    )>,
+) {
+    let Ok((map_size, grid_size, tile_size, map_type, anchor)) = tilemap_q.single() else {
+        info!("sync_transforms: no tilemap found");
+        return;
+    };
+
+    for (tile_pos, mut transform) in &mut query {
+        let world_pos = tile_pos.center_in_world(map_size, grid_size, tile_size, map_type, anchor);
+        let z = transform.translation.z;
+        info!(
+            "Moving player at {:?} to world pos {:?}",
+            tile_pos, world_pos
+        );
+        transform.translation = world_pos.extend(z);
     }
 }
 

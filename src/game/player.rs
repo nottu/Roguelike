@@ -18,19 +18,21 @@ pub enum PlayerAction {
 #[derive(Debug, Component)]
 pub struct Player;
 
-fn spawn_player(mut commands: Commands, assets: Res<SpriteAssets>) {
-    let input_map = InputMap::default()
+fn player_input_map() -> InputMap<PlayerAction> {
+    InputMap::default()
         .with_one_to_many(PlayerAction::MoveUp, [KeyCode::ArrowUp, KeyCode::KeyW])
         .with_one_to_many(PlayerAction::MoveDown, [KeyCode::ArrowDown, KeyCode::KeyS])
         .with_one_to_many(PlayerAction::MoveLeft, [KeyCode::ArrowLeft, KeyCode::KeyA])
         .with_one_to_many(
             PlayerAction::MoveRight,
             [KeyCode::ArrowRight, KeyCode::KeyD],
-        );
+        )
+}
 
+fn spawn_player(mut commands: Commands, assets: Res<SpriteAssets>) {
     commands.spawn((
         Player,
-        Position { x: 0, y: 0 },
+        TilePos { x: 5, y: 5 },
         Sprite::from_atlas_image(
             assets.heroes.clone(),
             TextureAtlas {
@@ -38,38 +40,12 @@ fn spawn_player(mut commands: Commands, assets: Res<SpriteAssets>) {
                 index: IDLE_FRAMES[0],
             },
         ),
-        Transform::from_scale(Vec3::splat(1.0)),
+        Transform::from_xyz(0.0, 0.0, 10.0),
         SpriteAnimation::new(IDLE_FRAMES),
-        input_map,
+        player_input_map(),
         ActionState::<PlayerAction>::default(),
+        FacingDir::default(),
     ));
-}
-
-fn move_player(mut query: Query<(&ActionState<PlayerAction>, &mut Position), With<Player>>) {
-    let Ok((action, mut pos)) = query.single_mut() else {
-        return;
-    };
-
-    let dx = if action.just_pressed(&PlayerAction::MoveRight) {
-        1
-    } else if action.just_pressed(&PlayerAction::MoveLeft) {
-        -1
-    } else {
-        0
-    };
-
-    let dy = if action.just_pressed(&PlayerAction::MoveUp) {
-        1
-    } else if action.just_pressed(&PlayerAction::MoveDown) {
-        -1
-    } else {
-        0
-    };
-
-    if dx != 0 || dy != 0 {
-        pos.x += dx;
-        pos.y += dy;
-    }
 }
 
 pub struct PlayerPlugin;
@@ -78,6 +54,49 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default())
             .add_systems(OnEnter(GameState::InGame), spawn_player)
-            .add_systems(Update, move_player.run_if(in_state(GameState::InGame)));
+            .add_systems(Update, move_player);
+    }
+}
+
+pub fn move_player(
+    mut query: Query<(&ActionState<PlayerAction>, &mut TilePos, &mut FacingDir), With<Player>>,
+) {
+    let Ok((action, mut pos, mut facing)) = query.single_mut() else {
+        return;
+    };
+
+    let dx: i32 = if action.just_pressed(&PlayerAction::MoveRight) {
+        1
+    } else if action.just_pressed(&PlayerAction::MoveLeft) {
+        -1
+    } else {
+        0
+    };
+
+    let dy: i32 = if action.just_pressed(&PlayerAction::MoveUp) {
+        1
+    } else if action.just_pressed(&PlayerAction::MoveDown) {
+        -1
+    } else {
+        0
+    };
+
+    if dx == 1 {
+        *facing = FacingDir::Right;
+    } else if dx == -1 {
+        *facing = FacingDir::Left;
+    }
+
+    if dx != 0 || dy != 0 {
+        if dx > 0 {
+            pos.x = pos.x.saturating_add(dx as u32);
+        } else {
+            pos.x = pos.x.saturating_sub(dx.unsigned_abs());
+        }
+        if dy > 0 {
+            pos.y = pos.y.saturating_add(dy as u32);
+        } else {
+            pos.y = pos.y.saturating_sub(dy.unsigned_abs());
+        }
     }
 }
