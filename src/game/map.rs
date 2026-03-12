@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 
-use crate::game::{GameState, map};
+use crate::game::{GameState, TILE_SIZE};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Component, Clone, Copy)]
 pub enum TileKind {
     Wall,
     Floor,
@@ -39,7 +39,7 @@ pub fn spawn_tilemap(mut commands: Commands, asset_server: Res<AssetServer>) {
     let texture_handle: Handle<Image> = asset_server.load("sprites/dungeon.png");
 
     let map_size = TilemapSize { x: 30, y: 20 };
-    let tile_size = TilemapTileSize::new(16.0, 16.0);
+    let tile_size = TilemapTileSize::new(TILE_SIZE, TILE_SIZE);
 
     // Create a tilemap entity a little early.
     // We want this entity early because we need to tell each tile which tilemap entity
@@ -59,16 +59,20 @@ pub fn spawn_tilemap(mut commands: Commands, asset_server: Res<AssetServer>) {
     for x in 0..map_size.x {
         for y in 0..map_size.y {
             let tile_pos = TilePos { x, y };
+            let kind = map_data[y as usize][x as usize];
             let tile_entity = commands
-                .spawn(TileBundle {
-                    position: tile_pos,
-                    tilemap_id: TilemapId(tilemap_entity),
-                    texture_index: match map_data[y as usize][x as usize] {
-                        TileKind::Wall => TileTextureIndex(0),
-                        TileKind::Floor => TileTextureIndex(6),
-                    }, // index into your spritesheet
-                    ..default()
-                })
+                .spawn((
+                    TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(tilemap_entity),
+                        texture_index: match kind {
+                            TileKind::Wall => TileTextureIndex(0),
+                            TileKind::Floor => TileTextureIndex(6),
+                        }, // index into your spritesheet
+                        ..default()
+                    },
+                    kind,
+                ))
                 .id();
             tile_storage.set(&tile_pos, tile_entity);
         }

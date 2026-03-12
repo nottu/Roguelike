@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 
 use crate::game::assets::SpriteAssets;
+use crate::game::map::TileKind;
 use crate::game::*;
 
 // Hero 0 body animations (cols 0-2, various rows)
@@ -13,6 +14,20 @@ pub enum PlayerAction {
     MoveDown,
     MoveLeft,
     MoveRight,
+    //
+    Attack,
+}
+
+impl PlayerAction {
+    fn direction(&self) -> Option<IVec2> {
+        match self {
+            Self::MoveRight => Some(IVec2::X),
+            Self::MoveLeft => Some(IVec2::NEG_X),
+            Self::MoveUp => Some(IVec2::Y),
+            Self::MoveDown => Some(IVec2::NEG_Y),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Component)]
@@ -60,43 +75,48 @@ impl Plugin for PlayerPlugin {
 
 pub fn move_player(
     mut query: Query<(&ActionState<PlayerAction>, &mut TilePos, &mut FacingDir), With<Player>>,
+    tilemap_q: Query<(&TileStorage, &TilemapSize)>,
+    tile_kind_q: Query<&TileKind>,
 ) {
     let Ok((action, mut pos, mut facing)) = query.single_mut() else {
         return;
     };
-
-    let dx: i32 = if action.just_pressed(&PlayerAction::MoveRight) {
-        1
-    } else if action.just_pressed(&PlayerAction::MoveLeft) {
-        -1
-    } else {
-        0
+    let Ok((storage, map_size)) = tilemap_q.single() else {
+        return;
     };
 
-    let dy: i32 = if action.just_pressed(&PlayerAction::MoveUp) {
-        1
-    } else if action.just_pressed(&PlayerAction::MoveDown) {
-        -1
-    } else {
-        0
+    let Some(delta) = action
+        .get_just_pressed()
+        .iter()
+        .find_map(PlayerAction::direction)
+    else {
+        return;
     };
 
-    if dx == 1 {
+    if delta.x > 0 {
         *facing = FacingDir::Right;
-    } else if dx == -1 {
+    } else if delta.x < 0 {
         *facing = FacingDir::Left;
     }
 
-    if dx != 0 || dy != 0 {
-        if dx > 0 {
-            pos.x = pos.x.saturating_add(dx as u32);
-        } else {
-            pos.x = pos.x.saturating_sub(dx.unsigned_abs());
-        }
-        if dy > 0 {
-            pos.y = pos.y.saturating_add(dy as u32);
-        } else {
-            pos.y = pos.y.saturating_sub(dy.unsigned_abs());
-        }
+    let dest = TilePos {
+        x: pos
+            .x
+            .saturating_add_signed(delta.x)
+            .min(map_size.x.saturating_sub(1)),
+        y: pos
+            .y
+            .saturating_add_signed(delta.y)
+            .min(map_size.y.saturating_sub(1)),
+    };
+
+    let walkable = storage
+        .get(&dest)
+        .and_then(|e| tile_kind_q.get(e).ok())
+        .is_some_and(|kind| *kind != TileKind::Wall);
+
+    if walkable {
+        pos.x = dest.x;
+        pos.y = dest.y;
     }
 }
