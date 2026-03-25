@@ -10,8 +10,10 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Tiny Rogue".into(),
-                        resolution: (1280, 800).into(),
+                        title: "Tiny Dungeon".to_string(),
+                        mode: bevy::window::WindowMode::BorderlessFullscreen(
+                            bevy::window::MonitorSelection::Current,
+                        ),
                         ..default()
                     }),
                     ..default()
