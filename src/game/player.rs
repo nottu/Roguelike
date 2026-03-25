@@ -4,6 +4,7 @@ use bevy_ecs_tilemap::tiles::TilePos;
 use bevy_ecs_tilemap::tiles::TileStorage;
 use leafwing_input_manager::prelude::*;
 
+use crate::game::PlayerSpawn;
 use crate::game::{GameAssets, GameStates, Rigid};
 
 pub(super) struct PlayerPlugin;
@@ -19,11 +20,15 @@ impl Plugin for PlayerPlugin {
 #[derive(Debug, Component)]
 pub struct Player;
 
-fn spawn_player(mut commands: Commands, game_assets: Res<GameAssets>) {
+fn spawn_player(
+    mut commands: Commands,
+    game_assets: Res<GameAssets>,
+    spawn_position: Res<PlayerSpawn>,
+) {
     commands.spawn((
         Player,
         Rigid,
-        TilePos::new(12, 6),
+        spawn_position.0,
         // ensure we render above the map...
         Transform::from_xyz(0.0, 0.0, 1.0),
         Sprite {
@@ -38,7 +43,7 @@ fn spawn_player(mut commands: Commands, game_assets: Res<GameAssets>) {
     ));
 }
 
-#[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect)]
+#[derive(Debug, Actionlike, PartialEq, Eq, Clone, Copy, Hash, Reflect)]
 pub enum PlayerAction {
     MoveUp,
     MoveDown,
@@ -76,7 +81,7 @@ pub fn player_input(
     let Some(action) = action.get_just_pressed().first().map(|a| a.clone()) else {
         return;
     };
-    log::info!("Player action");
+    log::info!("PlayerAction: {action:?}");
 
     let target_pos = match action {
         PlayerAction::MoveUp => TilePos {

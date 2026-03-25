@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 
-use crate::game::{GameAssets, GameStates, Rigid};
+use crate::game::{GameAssets, GameStates, PlayerSpawn, Rigid};
 
 pub(super) struct MapPlugin;
 
@@ -34,7 +34,8 @@ fn spawn_map(
     game_assets: Res<GameAssets>,
     mut next_state: ResMut<NextState<GameStates>>,
 ) {
-    let map = Map::generate_simple();
+    let (map, player_spawn) = Map::generate_simple();
+    commands.insert_resource(player_spawn);
     let map_size = map.size();
 
     let tilemap_entity = commands.spawn_empty().id();
@@ -89,9 +90,9 @@ impl Rect {
             y2: y + h,
         }
     }
-    // fn center(&self) -> (u32, u32) {
-    //     ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
-    // }
+    fn center(&self) -> TilePos {
+        TilePos::new((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
+    }
 
     // pub fn intersect(&self, other: &Rect) -> bool {
     //     self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
@@ -138,7 +139,7 @@ impl Map {
         }
     }
 
-    fn generate_simple() -> Self {
+    fn generate_simple() -> (Self, PlayerSpawn) {
         let mut map = Self::new(50, 30);
 
         let room1 = Rect::new(10, 5, 10, 15);
@@ -147,7 +148,7 @@ impl Map {
         map.carve_room(room1);
         map.carve_room(room2);
 
-        map
+        (map, PlayerSpawn(room2.center()))
     }
 
     fn iter(&self) -> impl Iterator<Item = (TilePos, TileKind)> {

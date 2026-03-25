@@ -20,6 +20,10 @@ pub(crate) struct GameAssets {
 #[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
 pub struct Rigid;
 
+#[derive(Default, Resource)]
+/// Should be populated by the map plugin!
+pub(super) struct PlayerSpawn(pub TilePos);
+
 impl GameAssets {
     const fn tile_index(row: u32, col: u32) -> u32 {
         const TILE_COLS: u32 = 12;
@@ -42,6 +46,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((MapPlugin, PlayerPlugin))
             .init_state::<GameStates>()
+            .init_resource::<PlayerSpawn>()
             .add_loading_state(
                 LoadingState::new(GameStates::AssetLoading)
                     .continue_to_state(GameStates::MapLoading)
