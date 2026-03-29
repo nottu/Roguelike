@@ -2,6 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
+use rand::prelude::*;
 
 use crate::game::{GameAssets, GameStates, PlayerSpawn, Rigid};
 
@@ -34,7 +35,7 @@ fn spawn_map(
     game_assets: Res<GameAssets>,
     mut next_state: ResMut<NextState<GameStates>>,
 ) {
-    let (map, player_spawn) = Map::generate_simple();
+    let (map, player_spawn) = Map::generate_random();
     commands.insert_resource(player_spawn);
     let map_size = map.size();
 
@@ -90,13 +91,14 @@ impl Rect {
             y2: y + h,
         }
     }
+
     fn center(&self) -> TilePos {
         TilePos::new((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
     }
 
-    // pub fn intersect(&self, other: &Rect) -> bool {
-    //     self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
-    // }
+    fn intersect(&self, other: &Rect) -> bool {
+        self.x1 <= other.x2 && self.x2 >= other.x1 && self.y1 <= other.y2 && self.y2 >= other.y1
+    }
 }
 
 struct Map {
@@ -139,22 +141,60 @@ impl Map {
         }
     }
 
-    fn generate_simple() -> (Self, PlayerSpawn) {
-        let mut map = Self::new(50, 30);
-
-        let room1 = Rect::new(10, 5, 10, 15);
-        let room2 = Rect::new(25, 5, 10, 15);
-
-        map.carve_room(room1);
-        map.carve_room(room2);
-
-        (map, PlayerSpawn(room2.center()))
-    }
-
     fn iter(&self) -> impl Iterator<Item = (TilePos, TileKind)> {
         (0..self.size.y)
             .flat_map(move |y| (0..self.size.x).map(move |x| TilePos { x, y }))
             .map(|pos| (pos, self[pos]))
+    }
+
+    fn generate_random() -> (Self, PlayerSpawn) {
+        let mut map = Self::new(80, 50);
+        const MAX_ROOMS: usize = 30;
+        const MIN_SIZE: u32 = 6;
+        const MAX_SIZE: u32 = 10;
+
+        let mut rooms = Vec::with_capacity(MAX_ROOMS);
+
+        let mut rng = rand::rng();
+        for _ in 0..MAX_ROOMS {
+            let w = rng.random_range(MIN_SIZE..MAX_SIZE);
+            let h = rng.random_range(MIN_SIZE..MAX_SIZE);
+
+            let x = rng.random_range(1..map.size.x - w);
+            let y = rng.random_range(1..map.size.y - h);
+
+            let new_room = Rect::new(x, y, w, h);
+            if rooms.iter().any(|o| new_room.intersect(o)) {
+                continue;
+            }
+            map.carve_room(new_room);
+            if let Some(prev_room) = rooms.last() {
+                let center = new_room.center();
+                let prev_center = prev_room.center();
+
+                if rng.random_bool(0.5) {
+                    map.apply_horizontal_tunnel(center, prev_center);
+                    map.apply_vertical_tunnel(prev_center, center);
+                } else {
+                    map.apply_vertical_tunnel(center, prev_center);
+                    map.apply_horizontal_tunnel(prev_center, center);
+                }
+            }
+            rooms.push(new_room);
+        }
+
+        (map, rooms.first().expect("expected a room").center().into())
+    }
+
+    fn apply_horizontal_tunnel(&mut self, start: TilePos, end: TilePos) {
+        for x in u32::min(start.x, end.x)..=u32::max(start.x, end.x) {
+            self[TilePos { x, y: start.y }] = TileKind::Floor;
+        }
+    }
+    fn apply_vertical_tunnel(&mut self, start: TilePos, end: TilePos) {
+        for y in u32::min(start.y, end.y)..=u32::max(start.y, end.y) {
+            self[TilePos { x: start.x, y }] = TileKind::Floor;
+        }
     }
 }
 

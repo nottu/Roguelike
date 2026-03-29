@@ -78,9 +78,10 @@ pub fn player_input(
         return;
     };
 
-    let Some(action) = action.get_just_pressed().first().map(|a| a.clone()) else {
+    let Some(action) = action.get_just_pressed().first().copied() else {
         return;
     };
+
     log::info!("PlayerAction: {action:?}");
 
     let target_pos = match action {
@@ -102,11 +103,13 @@ pub fn player_input(
         },
     };
 
-    if let Some(entity) = storage.checked_get(&target_pos) {
-        if rigid_q.get(entity).is_ok() {
-            log::info!("Movement blocked!");
-            return; // blocked
-        }
+    let Some(entity) = storage.checked_get(&target_pos) else {
+        log::info!("Move target out of bounds");
+        return; // out of bounds
+    };
+    if rigid_q.get(entity).is_ok() {
+        log::info!("Movement blocked!");
+        return; // blocked by rigid tile
     }
 
     *pos = target_pos;

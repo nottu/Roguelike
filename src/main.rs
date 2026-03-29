@@ -11,9 +11,7 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Tiny Dungeon".to_string(),
-                        mode: bevy::window::WindowMode::BorderlessFullscreen(
-                            bevy::window::MonitorSelection::Current,
-                        ),
+                        resolution: (1760, 1160).into(),
                         ..default()
                     }),
                     ..default()
@@ -29,7 +27,7 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
-            scale: 0.5,
+            scale: 0.75,
             ..OrthographicProjection::default_2d()
         }),
     ));

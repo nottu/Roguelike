@@ -20,9 +20,14 @@ pub(crate) struct GameAssets {
 #[derive(Debug, Component, PartialEq, Eq, Clone, Copy)]
 pub struct Rigid;
 
-#[derive(Default, Resource)]
-/// Should be populated by the map plugin!
+#[derive(Resource)]
 pub(super) struct PlayerSpawn(pub TilePos);
+
+impl From<TilePos> for PlayerSpawn {
+    fn from(value: TilePos) -> Self {
+        Self(value)
+    }
+}
 
 impl GameAssets {
     const fn tile_index(row: u32, col: u32) -> u32 {
@@ -46,7 +51,6 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((MapPlugin, PlayerPlugin))
             .init_state::<GameStates>()
-            .init_resource::<PlayerSpawn>()
             .add_loading_state(
                 LoadingState::new(GameStates::AssetLoading)
                     .continue_to_state(GameStates::MapLoading)
@@ -66,6 +70,9 @@ fn update_positions(
         &TilemapAnchor,
     )>,
 ) {
+    if moved.is_empty() {
+        return;
+    }
     let Ok((map_size, grid_size, tile_size, map_type, anchor)) = tilemap_q.single() else {
         log::warn!("No map loaded yet");
         return;
