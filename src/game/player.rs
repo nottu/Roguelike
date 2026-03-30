@@ -1,11 +1,12 @@
 use bevy::log;
 use bevy::prelude::*;
-use bevy_ecs_tilemap::tiles::TilePos;
-use bevy_ecs_tilemap::tiles::TileStorage;
 use leafwing_input_manager::prelude::*;
 
+use crate::game::MapLayer;
 use crate::game::PlayerSpawn;
-use crate::game::{GameAssets, GameStates, Rigid};
+use crate::game::Position;
+use crate::game::TileKind;
+use crate::game::{GameAssets, GameStates};
 
 pub(super) struct PlayerPlugin;
 
@@ -27,8 +28,7 @@ fn spawn_player(
 ) {
     commands.spawn((
         Player,
-        Rigid,
-        spawn_position.0,
+        Position::from(spawn_position.0),
         // ensure we render above the map...
         Transform::from_xyz(0.0, 0.0, 1.0),
         Sprite {
@@ -65,16 +65,11 @@ pub fn player_input_map() -> InputMap<PlayerAction> {
 }
 
 pub fn player_input(
-    mut player_query: Query<(&ActionState<PlayerAction>, &mut TilePos), With<Player>>,
-    tile_storage_q: Query<&TileStorage>,
-    rigid_q: Query<(), With<Rigid>>,
+    mut player_query: Query<(&ActionState<PlayerAction>, &mut Position), With<Player>>,
+    map_layer: Res<MapLayer>,
 ) {
-    let Ok((action, mut pos)) = player_query.single_mut() else {
+    let Ok((action, mut position)) = player_query.single_mut() else {
         log::warn!("No player");
-        return;
-    };
-    let Ok(storage) = tile_storage_q.single() else {
-        log::warn!("Map not loaded");
         return;
     };
 
@@ -84,33 +79,24 @@ pub fn player_input(
 
     log::info!("PlayerAction: {action:?}");
 
-    let target_pos = match action {
-        PlayerAction::MoveUp => TilePos {
-            x: pos.x,
-            y: pos.y + 1,
-        },
-        PlayerAction::MoveDown => TilePos {
-            x: pos.x,
-            y: pos.y.saturating_sub(1),
-        },
-        PlayerAction::MoveLeft => TilePos {
-            x: pos.x.saturating_sub(1),
-            y: pos.y,
-        },
-        PlayerAction::MoveRight => TilePos {
-            x: pos.x + 1,
-            y: pos.y,
-        },
+    let pos_dif = match action {
+        PlayerAction::MoveUp => IVec2 { x: 0, y: 1 },
+        PlayerAction::MoveDown => IVec2 { x: 0, y: -1 },
+        PlayerAction::MoveLeft => IVec2 { x: -1, y: 0 },
+        PlayerAction::MoveRight => IVec2 { x: 1, y: 0 },
     };
+    let target_pos = position.0 + pos_dif;
 
-    let Some(entity) = storage.checked_get(&target_pos) else {
-        log::info!("Move target out of bounds");
-        return; // out of bounds
+    let Some(tile_kind) = map_layer.0.get(&target_pos) else {
+        log::warn!("Can't move: {target_pos} not registerd in MapLayer");
+        return;
     };
-    if rigid_q.get(entity).is_ok() {
-        log::info!("Movement blocked!");
-        return; // blocked by rigid tile
+    match tile_kind {
+        TileKind::Floor => {
+            position.0 = target_pos;
+        }
+        TileKind::Wall => {
+            log::info!("WALL");
+        }
     }
-
-    *pos = target_pos;
 }

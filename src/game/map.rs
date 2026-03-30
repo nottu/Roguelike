@@ -1,10 +1,10 @@
 use std::ops::{Index, IndexMut};
 
-use bevy::prelude::*;
+use bevy::{platform::collections::HashMap, prelude::*};
 use bevy_ecs_tilemap::prelude::*;
 use rand::prelude::*;
 
-use crate::game::{GameAssets, GameStates, PlayerSpawn, Rigid};
+use crate::game::{GameAssets, GameStates, MapLayer, PlayerSpawn};
 
 pub(super) struct MapPlugin;
 
@@ -42,6 +42,7 @@ fn spawn_map(
     let tilemap_entity = commands.spawn_empty().id();
     let mut tile_storage = TileStorage::empty(map_size);
 
+    let mut map_layer: HashMap<IVec2, TileKind> = HashMap::new();
     for (tile_pos, tile_kind) in map.iter() {
         let tile_entity = commands
             .spawn(TileBundle {
@@ -51,10 +52,15 @@ fn spawn_map(
                 ..Default::default()
             })
             .id();
-        if tile_kind == TileKind::Wall {
-            commands.entity(tile_entity).insert(Rigid);
-        }
+
         tile_storage.set(&tile_pos, tile_entity);
+        map_layer.insert(
+            IVec2 {
+                x: tile_pos.x as i32,
+                y: tile_pos.y as i32,
+            },
+            tile_kind,
+        );
     }
 
     let tile_size = TilemapTileSize { x: 16.0, y: 16.0 };
@@ -71,6 +77,7 @@ fn spawn_map(
         anchor: TilemapAnchor::Center,
         ..Default::default()
     });
+    commands.insert_resource(MapLayer(map_layer));
     next_state.set(GameStates::Play);
 }
 
